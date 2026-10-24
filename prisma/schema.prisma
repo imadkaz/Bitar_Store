@@ -1,0 +1,33 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  previewFeatures     = ["partialIndexes"]
+  importFileExtension = "ts"
+  moduleFormat        = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            BigInt    @id @default(autoincrement()) @db.BigInt
+  email         String
+  passwordHash  String
+  fullName      String    @map("full_name")
+  isActive      Boolean   @default(true) @map("is_active")
+  deactivatedAt DateTime? @map("deactivated_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy     BigInt?   @map("created_by") @db.BigInt
+  updatedBy     BigInt?   @map("updated_by") @db.BigInt
+  version       Int       @default(1)
+  creator       User?     @relation("UserCreatedBy", fields: [createdBy], references: [id])
+  createdUsers  User[]    @relation("UserCreatedBy")
+  updater       User?     @relation("UserUpdatedBy", fields: [updatedBy], references: [id])
+  updatedUsers  User[]    @relation("UserUpdatedBy")
+
+  @@index([createdBy])
+  @@index([updatedBy])
+  @@map("users")
+}
