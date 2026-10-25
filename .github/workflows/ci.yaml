@@ -42,5 +42,5 @@ jobs:
       - run: npm ci
       - run: npm run migrate
       - run: npm run typecheck
-      - run: npm test-vitest
+      - run: npm run test-vitest
       - run: npm run build
