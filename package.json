@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "eslint src",
     "clean": "rm -rf build",
+    "typecheck": "npm run prisma:generate && tsc --noEmit",
     "prebuild": "npm run clean",
     "build": "tsc",
     "prestart": "npm run build",
@@ -13,8 +14,8 @@
     "dev": "ts-node-dev --respawn src/index.ts",
     "test-vitest": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
-    "seed:admin": "tsx scripts/seed-admin.ts",
-    "typecheck": "tsc --noEmit"
+    "seed:admin": "tsx scripts/seed-admin.ts"
+
   },
   "keywords": [],
   "author": "imad",
