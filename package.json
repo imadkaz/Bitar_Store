@@ -13,7 +13,8 @@
     "dev": "ts-node-dev --respawn src/index.ts",
     "test-vitest": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
-    "seed:admin": "tsx scripts/seed-admin.ts"
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "imad",
