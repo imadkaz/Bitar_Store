@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach,afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../db';
 import { Branch } from '../models/Branch.model';
 import { User, UserRole } from '../models/User.model';
@@ -16,6 +16,21 @@ const userIds: string[] = [];
 const branchIds: string[] = [];
 const stamp = Date.now();
 
+
+// wake Neon up ONCE before the tests, and clean up ONCE at the end instead of after every test.
+// Every test already uses unique emails and codes, so they don't need a clean slate between them.
+beforeAll(async () => {
+    await prisma.$queryRaw`SELECT 1`;
+}, 60_000);
+
+afterAll(async () => {
+    await prisma.userBranchAccess.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.userPermissionOverride.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.branch.deleteMany({ where: { id: { in: branchIds } } });
+    userIds.length = 0;
+    branchIds.length = 0;
+}, 60_000);
 afterEach(async () => {
     await prisma.userBranchAccess.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.userPermissionOverride.deleteMany({ where: { userId: { in: userIds } } });
