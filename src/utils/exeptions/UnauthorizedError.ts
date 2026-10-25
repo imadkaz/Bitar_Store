@@ -1,0 +1,7 @@
+// src/utils/exeptions/UnauthorizedError.ts
+export class UnauthorizedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'UnauthorizedError';
+    }
+}

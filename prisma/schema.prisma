@@ -1,9 +1,12 @@
+// The database schema is owned by migrations/*.sql (run with `npm run migrate`).
+// This file only MAPS the tables the code uses, so we add a model when a module needs it.
+// Never run `prisma migrate` or `prisma db push` here.
+
 generator client {
   provider            = "prisma-client"
   output              = "../src/generated/prisma"
-  previewFeatures     = ["partialIndexes"]
-  importFileExtension = "ts"
   moduleFormat        = "cjs"
+  importFileExtension = "ts"
 }
 
 datasource db {
@@ -11,23 +14,54 @@ datasource db {
 }
 
 model User {
-  id            BigInt    @id @default(autoincrement()) @db.BigInt
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email         String
-  passwordHash  String
+  passwordHash  String?   @map("password_hash")
   fullName      String    @map("full_name")
+  role          String
   isActive      Boolean   @default(true) @map("is_active")
   deactivatedAt DateTime? @map("deactivated_at") @db.Timestamptz(6)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
-  createdBy     BigInt?   @map("created_by") @db.BigInt
-  updatedBy     BigInt?   @map("updated_by") @db.BigInt
+  createdBy     String?   @map("created_by") @db.Uuid
+  updatedBy     String?   @map("updated_by") @db.Uuid
   version       Int       @default(1)
-  creator       User?     @relation("UserCreatedBy", fields: [createdBy], references: [id])
-  createdUsers  User[]    @relation("UserCreatedBy")
-  updater       User?     @relation("UserUpdatedBy", fields: [updatedBy], references: [id])
-  updatedUsers  User[]    @relation("UserUpdatedBy")
 
-  @@index([createdBy])
-  @@index([updatedBy])
   @@map("users")
+}
+
+model Branch {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  version   Int      @default(1)
+
+  @@map("branches")
+}
+
+model UserBranchAccess {
+  userId    String   @map("user_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  grantedBy String?  @map("granted_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([userId, branchId])
+  @@map("user_branch_access")
+}
+
+model UserPermissionOverride {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  permission String
+  effect     String
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([userId, permission])
+  @@map("user_permission_overrides")
 }

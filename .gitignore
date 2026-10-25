@@ -12,3 +12,4 @@ coverage/
 src/generated/
 *.log
 logs/
+note.txt
