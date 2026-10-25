@@ -12,7 +12,8 @@
     "start": "node build/index.js",
     "dev": "ts-node-dev --respawn src/index.ts",
     "test-vitest": "vitest run",
-    "migrate": "tsx scripts/migrate.ts"
+    "migrate": "tsx scripts/migrate.ts",
+    "seed:admin": "tsx scripts/seed-admin.ts"
   },
   "keywords": [],
   "author": "imad",
