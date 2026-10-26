@@ -16,7 +16,7 @@ async function main() {
     }
 
     const admin = await new CreateUserUsecase(userRepository).execute(
-        { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, fullName: ADMIN_NAME ?? 'Admin', role: UserRole.ADMIN },
+        { email: ADMIN_EMAIL, fullName: ADMIN_NAME ?? 'Admin', role: UserRole.ADMIN },
         null,
     );
     console.log(`created admin ${admin.getEmail()} (id: ${admin.getId()})`);

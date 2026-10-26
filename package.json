@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {
+    "scripts": {
     "lint": "eslint src",
     "clean": "rm -rf build",
+    "prisma:generate": "prisma generate",
+    "typecheck": "npm run prisma:generate && tsc --noEmit",
     "prebuild": "npm run clean",
     "build": "tsc",
     "prestart": "npm run build",
@@ -14,6 +16,7 @@
     "test-vitest": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
     "seed:admin": "tsx scripts/seed-admin.ts"
+
   },
   "keywords": [],
   "author": "imad",

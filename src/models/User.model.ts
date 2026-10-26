@@ -122,6 +122,7 @@ export class User {
     getFullName(): string { return this.fullName; }
     getRole(): UserRole { return this.role; }
     isActive(): boolean { return this.active; }
+    hasPassword(): boolean { return this.passwordHash !== null; }
     getDeactivatedAt(): Date | null { return this.deactivatedAt; }
     getCreatedAt(): Date { return this.createdAt; }
     getUpdatedAt(): Date { return this.updatedAt; }

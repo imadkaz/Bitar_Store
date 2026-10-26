@@ -16,6 +16,8 @@ import { ListBranchesUsecase } from '../usecases/branch/ListBranchesUsecase';
 import { CreateBranchUsecase } from '../usecases/branch/CreateBranchUsecase';
 import { BranchController } from '../controllers/Branch.Controller';
 import { BranchRoutes } from './Branch.Routes';
+import { DeleteUserUsecase } from '../usecases/user/DeleteUserUsecase';
+import { SetUserPasswordUsecase } from '../usecases/user/SetUserPasswordUsecase';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -33,6 +35,8 @@ const userController = new UserController(
     new UpdateUserUsecase(userRepository),
     new GrantBranchAccessUsecase(userRepository, branchRepository, userAccessRepository),
     new RevokeBranchAccessUsecase(userRepository, userAccessRepository),
+    new DeleteUserUsecase(userRepository),
+    new SetUserPasswordUsecase(userRepository)
 );
 
     const branchController = new BranchController(

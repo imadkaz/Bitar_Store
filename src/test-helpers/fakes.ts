@@ -51,7 +51,7 @@ export class FakeUserRepository implements IUserRepository {
         const found = this.items.get(id);
         return found ? copyUser(found) : null;
     }
-
+    async delete(id: string) { this.items.delete(id); }
     async findByEmail(email: string) {
         const found = [...this.items.values()].find((u) => u.getEmail() === email);
         return found ? copyUser(found) : null;

@@ -7,6 +7,9 @@ import { IUserRepository } from './interfaces/IUserRepository';
 
 export class UserRepository implements IUserRepository {
     constructor(private readonly prisma: PrismaClient) { }
+    async delete(id: string): Promise<void> {
+        await this.prisma.user.delete({ where: { id } });
+    }
 
     async findById(id: string): Promise<User | null> {
         const raw = await this.prisma.user.findUnique({ where: { id } });

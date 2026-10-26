@@ -14,7 +14,9 @@ export const UserRoutes = (controller: UserController, authenticate: RequestHand
     route.post('/', asyncHandler(controller.createUser));
     route.get('/', asyncHandler(controller.listUsers));
     route.patch('/:id', asyncHandler(controller.updateUser));   // PATCH = partial update. No delete: users are deactivated.
+    route.put('/:id/password', asyncHandler(controller.setPassword));     // set or reset a password (admin only)
     route.put('/:id/branches/:branchId', asyncHandler(controller.grantBranch));
     route.delete('/:id/branches/:branchId', asyncHandler(controller.revokeBranch));
+    route.delete('/:id', asyncHandler(controller.deleteUser));
     return route;
 };
