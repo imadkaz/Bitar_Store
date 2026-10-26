@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { Client } from 'pg';
 
 const MIGRATIONS_DIR = join(process.cwd(), 'prisma', 'migrations');
-const checksum = (sql: string) => createHash('sha256').update(sql).digest('hex');
+const checksum = (sql: string) => createHash('sha256').update(sql.replace(/\r\n/g, '\n')).digest('hex');
 
 async function main() {
     const [command, fileArg] = process.argv.slice(2);

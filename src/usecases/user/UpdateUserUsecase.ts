@@ -1,6 +1,5 @@
 // src/usecases/user/UpdateUserUsecase.ts
-import { hash } from 'bcrypt';
-import { User, UserRole, assertValidPassword, normalizeEmail } from '../../models/User.model';
+import { User, UserRole, normalizeEmail } from '../../models/User.model';
 import { IUserRepository } from '../../repositories/interfaces/IUserRepository';
 import { ConflictError } from '../../utils/exeptions/ConflictError';
 import { NotFoundError } from '../../utils/exeptions/NotFoundError';
@@ -9,7 +8,6 @@ import { ValidationError } from '../../utils/exeptions/ValidationError';
 export interface UpdateUserInput {
     id: string;
     email?: string;
-    password?: string;   // PLAIN password; hashed here
     fullName?: string;
     role?: UserRole;
     isActive?: boolean;
@@ -44,10 +42,6 @@ export class UpdateUserUsecase {
                 }
                 user.changeEmail(email);
             }
-        }
-        if (input.password !== undefined) {
-            assertValidPassword(input.password);
-            user.changePasswordHash(await hash(input.password, 10));
         }
         if (input.fullName !== undefined) user.rename(input.fullName);
         if (input.role !== undefined) user.changeRole(input.role);

@@ -8,6 +8,7 @@ export function toUserResponse(user: User) {
         fullName: user.getFullName(),
         role: user.getRole(),
         isActive: user.isActive(),
+        hasPassword: user.hasPassword(),
         deactivatedAt: user.getDeactivatedAt(),
         createdAt: user.getCreatedAt(),
         updatedAt: user.getUpdatedAt(),
