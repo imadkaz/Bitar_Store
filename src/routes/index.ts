@@ -2,7 +2,6 @@
 import { Router } from 'express';
 import { UserController } from '../controllers/User.Controller';
 import { prisma } from '../db';
-import { createDevAuthenticate } from '../middlewares/Authenticate';
 import { UserRepository } from '../repositories/UserRepository';
 import { CreateUserUsecase } from '../usecases/user/CreateUserUsecase';
 import { ListUsersUsecase } from '../usecases/user/ListUsersUsecase';
@@ -18,6 +17,13 @@ import { BranchController } from '../controllers/Branch.Controller';
 import { BranchRoutes } from './Branch.Routes';
 import { DeleteUserUsecase } from '../usecases/user/DeleteUserUsecase';
 import { SetUserPasswordUsecase } from '../usecases/user/SetUserPasswordUsecase';
+import { createAuthenticate } from '../middlewares/Authenticate';
+import { GetAuthContextUsecase } from '../usecases/auth/GetAuthContextUsecase';
+import { JwtTokenService } from '../services/JwtTokenService';
+import config from '../config';
+import { AuthController } from '../controllers/AuthController';
+import { LoginUsecase } from '../usecases/auth/LoginUsecase';
+import { AuthRoutes } from './Auth.Routes';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -26,7 +32,13 @@ export const routes = Router();
 const userRepository = new UserRepository(prisma);
 const branchRepository = new BranchRepository(prisma);
 const userAccessRepository = new UserAccessRepository(prisma);  
-const authenticate = createDevAuthenticate(userRepository);   
+ const tokenService = new JwtTokenService(config.jwtSecret, config.jwtExpiresIn);
+   const authenticate = createAuthenticate(
+       new GetAuthContextUsecase(userRepository, userAccessRepository),
+       tokenService,
+       { allowDevHeader: config.authMode === 'dev' },
+   );
+
 
 // ---- users
 const userController = new UserController(
@@ -43,7 +55,8 @@ const userController = new UserController(
         new CreateBranchUsecase(branchRepository),
         new ListBranchesUsecase(branchRepository),
     );
+   const authController = new AuthController(new LoginUsecase(userRepository, tokenService));
 
 routes.use('/users', UserRoutes(userController, authenticate));
 routes.use('/branches', BranchRoutes(branchController, authenticate));
-
+routes.use('/auth', AuthRoutes(authController, authenticate));

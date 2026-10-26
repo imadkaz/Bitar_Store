@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-    "scripts": {
+  "scripts": {
     "lint": "eslint src",
     "clean": "rm -rf build",
     "prisma:generate": "prisma generate",
@@ -16,7 +16,6 @@
     "test-vitest": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
     "seed:admin": "tsx scripts/seed-admin.ts"
-
   },
   "keywords": [],
   "author": "imad",
@@ -26,9 +25,12 @@
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
     "prisma": "^7.10.1",
+    "supertest": "^7.3.1",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.23.15",
@@ -43,6 +45,7 @@
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
