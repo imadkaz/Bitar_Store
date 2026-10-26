@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { User, UserRole } from '../../models/User.model';
-import { FakeUserRepository, makeUser } from '../../test-helpers/fakes';
-import { ConflictError } from '../../utils/exeptions/ConflictError';
-import { NotFoundError } from '../../utils/exeptions/NotFoundError';
-import { ValidationError } from '../../utils/exeptions/ValidationError';
-import { UpdateUserUsecase } from './UpdateUserUsecase';
+import { User, UserRole } from '../../../models/User.model';
+import { FakeUserRepository, makeUser } from '../../../test-helpers/fakes';
+import { ConflictError } from '../../../utils/exeptions/ConflictError';
+import { NotFoundError } from '../../../utils/exeptions/NotFoundError';
+import { ValidationError } from '../../../utils/exeptions/ValidationError';
+import { UpdateUserUsecase } from '../UpdateUserUsecase';
 
 describe('UpdateUserUsecase', () => {
     let repo: FakeUserRepository;

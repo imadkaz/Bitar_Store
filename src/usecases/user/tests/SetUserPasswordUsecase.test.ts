@@ -1,10 +1,10 @@
 import { compare } from 'bcrypt';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { User, UserRole } from '../../models/User.model';
-import { FakeUserRepository, makeUser } from '../../test-helpers/fakes';
-import { NotFoundError } from '../../utils/exeptions/NotFoundError';
-import { ValidationError } from '../../utils/exeptions/ValidationError';
-import { SetUserPasswordUsecase } from './SetUserPasswordUsecase';
+import { User, UserRole } from '../../../models/User.model';
+import { FakeUserRepository, makeUser } from '../../../test-helpers/fakes';
+import { NotFoundError } from '../../../utils/exeptions/NotFoundError';
+import { ValidationError } from '../../../utils/exeptions/ValidationError';
+import { SetUserPasswordUsecase } from '../SetUserPasswordUsecase';
 
 describe('SetUserPasswordUsecase', () => {
     let repo: FakeUserRepository;

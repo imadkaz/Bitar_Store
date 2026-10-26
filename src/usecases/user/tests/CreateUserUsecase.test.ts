@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { UserRole } from '../../models/User.model';
-import { FakeUserRepository } from '../../test-helpers/fakes';
-import { ConflictError } from '../../utils/exeptions/ConflictError';
-import { ValidationError } from '../../utils/exeptions/ValidationError';
-import { CreateUserUsecase } from './CreateUserUsecase';
+import { UserRole } from '../../../models/User.model';
+import { FakeUserRepository } from '../../../test-helpers/fakes';
+import { ConflictError } from '../../../utils/exeptions/ConflictError';
+import { ValidationError } from '../../../utils/exeptions/ValidationError';
+import { CreateUserUsecase } from '../CreateUserUsecase';
 
 describe('CreateUserUsecase', () => {
     let repo: FakeUserRepository;
