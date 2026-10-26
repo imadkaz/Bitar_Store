@@ -65,3 +65,63 @@ model UserPermissionOverride {
   @@unique([userId, permission])
   @@map("user_permission_overrides")
 }
+
+model Style {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String
+  name      String
+  category  String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  version   Int      @default(1)
+  skus      Sku[]
+
+  @@map("styles")
+}
+
+model Sku {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  styleId       String            @map("style_id") @db.Uuid
+  skuCode       String            @map("sku_code")
+  size          String
+  color         String
+  standardPrice Decimal           @map("standard_price") @db.Decimal(12, 2)
+  currency      String            @default("USD") @db.Char(3)
+  isActive      Boolean           @default(true) @map("is_active")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy     String?           @map("created_by") @db.Uuid
+  updatedBy     String?           @map("updated_by") @db.Uuid
+  version       Int               @default(1)
+  style         Style             @relation(fields: [styleId], references: [id])
+  barcodes      Barcode[]
+  priceHistory  SkuPriceHistory[]
+
+  @@map("skus")
+}
+
+model Barcode {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skuId     String   @map("sku_id") @db.Uuid
+  code      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+  sku       Sku      @relation(fields: [skuId], references: [id])
+
+  @@map("barcodes")
+}
+
+model SkuPriceHistory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skuId       String   @map("sku_id") @db.Uuid
+  oldPrice    Decimal? @map("old_price") @db.Decimal(12, 2)
+  newPrice    Decimal  @map("new_price") @db.Decimal(12, 2)
+  effectiveAt DateTime @default(now()) @map("effective_at") @db.Timestamptz(6)
+  changedBy   String   @map("changed_by") @db.Uuid
+  sku         Sku      @relation(fields: [skuId], references: [id])
+
+  @@map("sku_price_history")
+}

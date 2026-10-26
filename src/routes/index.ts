@@ -24,6 +24,27 @@ import config from '../config';
 import { AuthController } from '../controllers/AuthController';
 import { LoginUsecase } from '../usecases/auth/LoginUsecase';
 import { AuthRoutes } from './Auth.Routes';
+import { BarcodeRepository } from '../repositories/BarcodeRepository';
+import { SkuRepository } from '../repositories/SkuRepository';
+import { StyleRepository } from '../repositories/StyleRepository';
+import { UpdateStyleUsecase } from '../usecases/styles/UpdateStyleUsecase';
+import { GetStyleUsecase } from '../usecases/styles/GetStyleUsecase';
+import { ListStylesUsecase } from '../usecases/styles/ListStylesUsecase';
+import { CreateStyleUsecase } from '../usecases/styles/CreateStyleUsecase';
+import { StyleController } from '../controllers/StyleController';
+import { StyleRoutes } from './Style.Routes';
+import { RemoveBarcodeUsecase } from '../usecases/barcodes/RemoveBarcodeUsecase';
+import { AddBarcodeUsecase } from '../usecases/barcodes/AddBarcodeUsecase';
+import { GetPriceHistoryUsecase } from '../usecases/skus/GetPriceHistoryUsecase';
+import { ChangeSkuPriceUsecase } from '../usecases/skus/ChangeSkuPriceUsecase';
+import { UpdateSkuUsecase } from '../usecases/skus/UpdateSkuUsecase';
+import { LookupSkuUsecase } from '../usecases/skus/LookupSkuUsecase';
+import { GetSkuUsecase } from '../usecases/skus/GetSkuUsecase';
+import { ListSkusUsecase } from '../usecases/skus/ListSkusUsecase';
+import { CreateSkuUsecase } from '../usecases/skus/CreateSkuUsecase';
+import { SkuController } from '../controllers/SkuController';
+import { BarcodeRoutes } from './Barcode.Routes';
+import { SkuRoutes } from './Sku.Routes';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -32,12 +53,16 @@ export const routes = Router();
 const userRepository = new UserRepository(prisma);
 const branchRepository = new BranchRepository(prisma);
 const userAccessRepository = new UserAccessRepository(prisma);  
- const tokenService = new JwtTokenService(config.jwtSecret, config.jwtExpiresIn);
-   const authenticate = createAuthenticate(
-       new GetAuthContextUsecase(userRepository, userAccessRepository),
-       tokenService,
-       { allowDevHeader: config.authMode === 'dev' },
-   );
+const tokenService = new JwtTokenService(config.jwtSecret, config.jwtExpiresIn);
+const styleRepository = new StyleRepository(prisma);
+const skuRepository = new SkuRepository(prisma);
+const barcodeRepository = new BarcodeRepository(prisma);
+
+const authenticate = createAuthenticate(
+   new GetAuthContextUsecase(userRepository, userAccessRepository),
+    tokenService,
+    { allowDevHeader: config.authMode === 'dev' },
+);
 
 
 // ---- users
@@ -51,12 +76,38 @@ const userController = new UserController(
     new SetUserPasswordUsecase(userRepository)
 );
 
-    const branchController = new BranchController(
-        new CreateBranchUsecase(branchRepository),
-        new ListBranchesUsecase(branchRepository),
-    );
-   const authController = new AuthController(new LoginUsecase(userRepository, tokenService));
+const branchController = new BranchController(
+    new CreateBranchUsecase(branchRepository),
+    new ListBranchesUsecase(branchRepository),
+);
+
+const styleController = new StyleController(
+    new CreateStyleUsecase(styleRepository),
+    new ListStylesUsecase(styleRepository),
+    new GetStyleUsecase(styleRepository, skuRepository),
+    new UpdateStyleUsecase(styleRepository)
+);
+
+const skuController = new SkuController(
+    new CreateSkuUsecase(styleRepository, skuRepository),
+    new ListSkusUsecase(skuRepository),
+    new GetSkuUsecase(skuRepository, barcodeRepository),
+    new LookupSkuUsecase(skuRepository, barcodeRepository),
+    new UpdateSkuUsecase(skuRepository),
+    new ChangeSkuPriceUsecase(skuRepository),
+    new GetPriceHistoryUsecase(skuRepository),
+    new AddBarcodeUsecase(skuRepository, barcodeRepository),
+    new RemoveBarcodeUsecase(barcodeRepository),
+);
+
+const authController = new AuthController(
+    new LoginUsecase(userRepository, tokenService)
+);
+
 
 routes.use('/users', UserRoutes(userController, authenticate));
 routes.use('/branches', BranchRoutes(branchController, authenticate));
+routes.use('/styles', StyleRoutes(styleController, authenticate));
+routes.use('/skus', SkuRoutes(skuController, authenticate));
+routes.use('/barcodes', BarcodeRoutes(skuController, authenticate));
 routes.use('/auth', AuthRoutes(authController, authenticate));
