@@ -11,6 +11,7 @@ import { RevokeBranchAccessUsecase } from '../usecases/user/RevokeBranchAccessUs
 import { GrantBranchAccessUsecase } from '../usecases/user/GrantBranchAccessUsecase';
 import { DeleteUserUsecase } from '../usecases/user/DeleteUserUsecase';
 import { SetUserPasswordUsecase } from '../usecases/user/SetUserPasswordUsecase';
+import { ValidationError } from '../utils/exeptions/ValidationError';
 
 export class UserController {
     constructor(
@@ -22,9 +23,14 @@ export class UserController {
         private readonly deleteUserUsecase: DeleteUserUsecase,
         private readonly setUserPasswordUsecase: SetUserPasswordUsecase
     ) {}
-
+    private rejectPassword(input: Record<string, unknown>) {
+        if (input.password !== undefined) {
+            throw new ValidationError('Passwords are set with PUT /users/:id/password');
+        }
+    }
     createUser = async (req: Request, res: Response) => {
         const input = req.body ?? {};   // fields are picked one by one: the client can't inject anything else
+            this.rejectPassword(input);
         const user = await this.createUserUsecase.execute(
             { email: input.email, fullName: input.fullName, role: input.role },
             getAuth(req).user.getId(),   // who is creating this user (saved as created_by)
@@ -42,6 +48,7 @@ export class UserController {
         if (!isUuid(id)) throw new NotFoundError('User not found');   // a non-uuid would crash the query (500)
 
         const input = req.body ?? {};
+        this.rejectPassword(input);
         const user = await this.updateUserUsecase.execute(
             {
                 id,
@@ -56,6 +63,10 @@ export class UserController {
     };
 
         grantBranch = async (req: Request, res: Response) => {
+            const id = req.params.id as string;
+            const branchId = req.params.branchId as string;
+            if (!isUuid(id)) throw new NotFoundError('User not found');
+            if (!isUuid(branchId)) throw new NotFoundError('Branch not found');
         await this.grantBranchAccessUsecase.execute(
             req.params.id as string,
             req.params.branchId as string,
@@ -65,6 +76,10 @@ export class UserController {
     };
 
     revokeBranch = async (req: Request, res: Response) => {
+        const id = req.params.id as string;
+        const branchId = req.params.branchId as string;
+        if (!isUuid(branchId)) throw new NotFoundError('Branch not found');
+        if (!isUuid(id)) throw new NotFoundError('User not found');
         await this.revokeBranchAccessUsecase.execute(req.params.id as string, req.params.branchId as string);
         res.status(204).send();
     };
@@ -78,7 +93,7 @@ export class UserController {
     deleteUser = async (req: Request, res: Response) => {
         const id = req.params.id as string;
         if (!isUuid(id)) throw new NotFoundError('User not found');   // a non-uuid would crash the query (500)
-        await this.deleteUserUsecase.execute(id);
+        await this.deleteUserUsecase.execute(id, getAuth(req).user.getId());
         res.status(204).send();
     };
 }

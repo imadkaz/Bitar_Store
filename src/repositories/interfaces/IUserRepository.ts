@@ -7,5 +7,5 @@ export interface IUserRepository {
     list(): Promise<User[]>;
     create(user: User, actorId: string | null): Promise<User>;
     update(user: User, actorId: string | null): Promise<User>;
-    delete(id: string): Promise<void>;
+    delete(id: string, actorId: string | null): Promise<void>;
 }

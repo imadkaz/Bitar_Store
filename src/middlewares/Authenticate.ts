@@ -1,12 +1,12 @@
-// src/middleware/authenticate.ts
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 import { AuthContext } from '../models/AuthContext';
+import { Permission } from '../models/Permission';
 import { UserRole } from '../models/User.model';
-import { IUserRepository } from '../repositories/interfaces/IUserRepository';
+import { ITokenService } from '../services/interfaces/ITokenService';
+import { GetAuthContextUsecase } from '../usecases/auth/GetAuthContextUsecase';
 import { ForbiddenError } from '../utils/exeptions/ForbiddenError';
 import { UnauthorizedError } from '../utils/exeptions/UnauthorizedError';
 import { isUuid } from '../utils/uuid';
-import { Permission } from '../models/Permission';
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -17,19 +17,38 @@ declare global {
     }
 }
 
-// DEVELOPMENT ONLY, until the login flow exists: trusts the X-User-Id header (anyone can claim to be anyone).
-// It refuses to be created in production, so it can't be shipped by accident.
-export function createDevAuthenticate(userRepository: IUserRepository): RequestHandler {
-    if (process.env.NODE_ENV === 'production') {
-        throw new Error('Dev authentication (X-User-Id) must never run in production');
+export interface AuthenticateOptions {
+    // DEVELOPMENT ONLY: also trust "X-User-Id: <uuid>" when there is no token. Anyone can claim to be anyone.
+    allowDevHeader: boolean;
+}
+
+// Answers "who is making this request?" and puts the answer on req.auth for the controllers (getAuth).
+export function createAuthenticate(
+    getAuthContext: GetAuthContextUsecase,
+    tokenService: ITokenService,
+    options: AuthenticateOptions,
+): RequestHandler {
+    if (options.allowDevHeader && process.env.NODE_ENV === 'production') {
+        throw new Error('The X-User-Id dev header must never be enabled in production');
     }
+
     return async (req: Request, _res: Response, next: NextFunction) => {
         try {
-            const userId = req.header('x-user-id');
-            if (typeof userId !== 'string' || !isUuid(userId)) throw new UnauthorizedError('Send a valid X-User-Id header');
-            const user = await userRepository.findById(userId);
-            if (!user || !user.isActive()) throw new UnauthorizedError('Unknown or inactive user');
-            req.auth = new AuthContext(user, new Set<Permission>(), new Set<string>());   // no permissions, no branch access
+            const authorization = req.headers.authorization;
+            const devHeader = req.header('x-user-id');
+            let userId: string;
+
+            if (authorization?.startsWith('Bearer ')) {
+                userId = tokenService.verify(authorization.slice('Bearer '.length).trim());
+            } else if (options.allowDevHeader && devHeader) {
+                userId = devHeader;
+            } else {
+                throw new UnauthorizedError('Authentication required');
+            }
+
+            if (!isUuid(userId)) throw new UnauthorizedError('Invalid or expired token');
+            // loads the user fresh from the database: deactivating a user or changing a role is effective immediately
+            req.auth = await getAuthContext.execute(userId);
             next();
         } catch (error) {
             next(error);
@@ -48,6 +67,17 @@ export const requireRole =
     (req, _res, next) => {
         try {
             if (!roles.includes(getAuth(req).user.getRole())) throw new ForbiddenError('Insufficient role');
+            next();
+        } catch (error) {
+            next(error);
+        }
+    };
+
+export const requirePermission =
+    (permission: Permission): RequestHandler =>
+    (req, _res, next) => {
+        try {
+            if (!getAuth(req).can(permission)) throw new ForbiddenError(`Missing permission: ${permission}`);
             next();
         } catch (error) {
             next(error);
