@@ -44,7 +44,7 @@ export class UserRepository implements IUserRepository {
             throw this.translate(error);
         }
     }
-    async delete(id: string, _actorId: string | null): Promise<void> {
+    async delete(id: string): Promise<void> {
         try {
             await this.prisma.$transaction([
                 this.prisma.userBranchAccess.deleteMany({ where: { userId: id } }),

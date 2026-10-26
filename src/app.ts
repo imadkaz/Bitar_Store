@@ -2,7 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import "dotenv/config";
 import logger from "./utils/logger";
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 import { ConflictError } from "./utils/exeptions/ConflictError";
 import { ForbiddenError } from "./utils/exeptions/ForbiddenError";
 import { NotFoundError } from "./utils/exeptions/NotFoundError";
@@ -30,7 +30,7 @@ app.use((_req, res) => {                                // 2) nothing matched: 4
     res.status(404).json({ message: 'Resource not found' });
 });
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {   // 3) errors, last (keep 4 parameters)
+app.use((err: Error, _req: Request, res: Response) => {   // 3) errors, last (keep 4 parameters)
     if (err instanceof UnauthorizedError) return res.status(401).json({ message: err.message });
     if (err instanceof ForbiddenError) return res.status(403).json({ message: err.message });
     if (err instanceof NotFoundError) return res.status(404).json({ message: err.message });
