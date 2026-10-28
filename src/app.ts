@@ -12,6 +12,7 @@ import { HttpException } from "./utils/exeptions/httpException";
 import requestLogger from "./middlewares/requestLogger";
 import { routes } from "./routes";
 import { createCors } from "./middlewares/cors";
+import { InsufficientStockError } from "./utils/exeptions/InsufficientStockError";
 
 export const app = express();
 
@@ -34,6 +35,9 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {   /
     if (err instanceof UnauthorizedError) return res.status(401).json({ message: err.message });
     if (err instanceof ForbiddenError) return res.status(403).json({ message: err.message });
     if (err instanceof NotFoundError) return res.status(404).json({ message: err.message });
+        if (err instanceof InsufficientStockError) {
+        return res.status(409).json({ message: err.message, details: err.shortages });   // the API still answers with "details"
+    }
     if (err instanceof ConflictError) return res.status(409).json({ message: err.message });
     if (err instanceof ValidationError) return res.status(400).json({ message: err.message });
     if (err instanceof HttpException) {

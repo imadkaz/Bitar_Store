@@ -45,6 +45,19 @@ import { CreateSkuUsecase } from '../usecases/skus/CreateSkuUsecase';
 import { SkuController } from '../controllers/SkuController';
 import { BarcodeRoutes } from './Barcode.Routes';
 import { SkuRoutes } from './Sku.Routes';
+import { SaleRoutes } from './Sale.Routes';
+import { StockRoutes } from './Stock.Routes';
+import { ListSalesUsecase } from '../usecases/sales/ListSalesUsecase';
+import { GetSaleUsecase } from '../usecases/sales/GetSaleUsecase';
+import { SalesUnitOfWork } from '../repositories/SalesUnitOfWork';
+import { SaleController } from '../controllers/SaleController';
+import { CreateSaleUsecase } from '../usecases/sales/CreateSaleUsecase';
+import { SetOpeningStockUsecase } from '../usecases/stock/SetOpeningStockUsecase';
+import { ListStockUsecase } from '../usecases/stock/ListStockUsecase';
+import { StockController } from '../controllers/StockController';
+import { SaleRepository } from '../repositories/SaleRepository';
+import { StockRepository } from '../repositories/StockRepository';
+import { StockAlertRepository } from '../repositories/StockAlertRepository';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -100,6 +113,26 @@ const skuController = new SkuController(
     new RemoveBarcodeUsecase(barcodeRepository),
 );
 
+const stockRepository = new StockRepository(prisma);
+const saleRepository = new SaleRepository(prisma);
+
+const stockController = new StockController(
+    new ListStockUsecase(skuRepository, stockRepository),
+    new SetOpeningStockUsecase(branchRepository, skuRepository, stockRepository),
+);
+
+const saleController = new SaleController(
+    new CreateSaleUsecase(
+        new SalesUnitOfWork(prisma), 
+        branchRepository, saleRepository, 
+        new StockAlertRepository(prisma)
+    ),
+    new GetSaleUsecase(saleRepository),
+    new ListSalesUsecase(saleRepository),
+);
+
+
+
 const authController = new AuthController(
     new LoginUsecase(userRepository, tokenService)
 );
@@ -111,3 +144,6 @@ routes.use('/styles', StyleRoutes(styleController, authenticate));
 routes.use('/skus', SkuRoutes(skuController, authenticate));
 routes.use('/barcodes', BarcodeRoutes(skuController, authenticate));
 routes.use('/auth', AuthRoutes(authController, authenticate));
+routes.use('/stock', StockRoutes(stockController, authenticate));
+routes.use('/sales', SaleRoutes(saleController, authenticate));
+
