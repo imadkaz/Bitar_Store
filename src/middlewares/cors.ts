@@ -9,7 +9,6 @@ export function createCors() {
         .split(',')
         .map((origin) => origin.trim())
         .filter(Boolean);
-
     return cors({
         origin: allowedOrigins,
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
