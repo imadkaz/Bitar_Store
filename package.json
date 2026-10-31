@@ -6,7 +6,7 @@
   "scripts": {
     "lint": "eslint src",
     "clean": "rm -rf build",
-    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
     "typecheck": "npm run prisma:generate && tsc --noEmit",
     "prebuild": "npm run clean",
     "build": "tsc",
