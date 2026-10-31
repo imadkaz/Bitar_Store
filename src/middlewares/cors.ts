@@ -14,6 +14,7 @@ export function createCors() {
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         // Every NON-standard header the frontend sends must be listed here, or the browser blocks the request.
         allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id', 'Idempotency-Key'],
+        exposedHeaders: ['X-Total-Count', 'Idempotent-Replay'],
         maxAge: 600,   // the browser may remember the answer for 10 minutes (fewer preflight requests)
     });
 }

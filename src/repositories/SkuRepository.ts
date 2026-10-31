@@ -134,6 +134,20 @@ export class SkuRepository implements ISkuRepository {
             return SkuMapper.toDomain(raw);
         });
     }
+        private static whereOf(filter: Omit<SkuFilter, 'limit' | 'offset'>): Prisma.SkuWhereInput {
+        return {
+            ...(filter.styleId ? { styleId: filter.styleId } : {}),
+            ...(filter.activeOnly ? { isActive: true } : {}),
+            ...(filter.search ? { OR: [
+                { skuCode: { contains: filter.search, mode: 'insensitive' } },
+                { color: { contains: filter.search, mode: 'insensitive' } },
+                { style: { name: { contains: filter.search, mode: 'insensitive' } } },
+            ] } : {}),
+        };
+    }
+    count(filter: Omit<SkuFilter, 'limit' | 'offset'>): Promise<number> {
+        return this.prisma.sku.count({ where: SkuRepository.whereOf(filter) });
+    }
 
     async listPriceHistory(skuId: string, limit: number): Promise<PriceChange[]> {
         const rows = await this.prisma.skuPriceHistory.findMany({
@@ -143,4 +157,5 @@ export class SkuRepository implements ISkuRepository {
         });
         return rows.map(SkuMapper.priceChangeToDomain);
     }
+
 }

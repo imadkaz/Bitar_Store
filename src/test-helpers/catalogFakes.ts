@@ -27,7 +27,6 @@ export class FakeStyleRepository implements IStyleRepository {
     constructor(seed: Style[] = []) {
         seed.forEach((s) => this.items.set(s.getId(), copyStyle(s)));
     }
-
     async findById(id: string) {
         const found = this.items.get(id);
         return found ? copyStyle(found) : null;
@@ -53,7 +52,7 @@ export class FakeStyleRepository implements IStyleRepository {
         this.audit.set(style.getId(), { createdBy: actorId, updatedBy: actorId });
         return copyStyle(style);
     }
-
+    
     async update(style: Style, actorId: string | null) {
         this.items.set(style.getId(), copyStyle(style));
         this.audit.set(style.getId(), { createdBy: this.audit.get(style.getId())?.createdBy ?? null, updatedBy: actorId });
@@ -63,12 +62,12 @@ export class FakeStyleRepository implements IStyleRepository {
 
 export class FakeBarcodeRepository implements IBarcodeRepository {
     readonly items = new Map<string, Barcode>();
-
+    
     async findById(id: string) {
         const found = this.items.get(id);
         return found ? copyBarcode(found) : null;
     }
-
+    
     async findByCode(code: string) {
         const found = [...this.items.values()].find((b) => b.getCode() === code);
         return found ? copyBarcode(found) : null;
@@ -83,7 +82,7 @@ export class FakeBarcodeRepository implements IBarcodeRepository {
         this.items.set(barcode.getId(), copyBarcode(barcode));
         return copyBarcode(barcode);
     }
-
+    
     async delete(id: string) {
         this.items.delete(id);
     }
@@ -93,11 +92,14 @@ export class FakeSkuRepository implements ISkuRepository {
     readonly items = new Map<string, Sku>();
     readonly history: PriceChange[] = [];                  // every price-history row ever written, oldest first
     readonly audit = new Map<string, { createdBy: string | null; updatedBy: string | null }>();
-
+    
     constructor(private readonly styles: FakeStyleRepository, private readonly barcodes: FakeBarcodeRepository, seed: Sku[] = []) {
         seed.forEach((s) => this.items.set(s.getId(), copySku(s)));
     }
-
+    
+    async count(filter: Omit<SkuFilter, 'limit' | 'offset'>) {
+        return (await this.list({ ...filter, limit: Number.MAX_SAFE_INTEGER, offset: 0 })).length;
+    }
     private async withStyle(sku: Sku): Promise<SkuWithStyle> {
         return { sku: copySku(sku), style: (await this.styles.findById(sku.getStyleId()))! };
     }

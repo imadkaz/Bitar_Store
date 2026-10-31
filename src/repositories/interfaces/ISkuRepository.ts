@@ -30,4 +30,5 @@ export interface ISkuRepository {
     // locks the row, writes the new price AND the history row (old price read inside the lock) in one transaction
     changePrice(sku: Sku, actorId: string): Promise<Sku>;
     listPriceHistory(skuId: string, limit: number): Promise<PriceChange[]>;
+    count(filter: Omit<SkuFilter, 'limit' | 'offset'>): Promise<number>;
 }

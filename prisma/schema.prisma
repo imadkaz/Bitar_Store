@@ -34,6 +34,7 @@ model Branch {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   code      String
   name      String
+  kind      String   @default("branch")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -253,4 +254,34 @@ model SalePayment {
   sale           Sale     @relation(fields: [saleId], references: [id])
 
   @@map("sale_payments")
+}
+
+
+model ReorderLevel {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skuId          String   @map("sku_id") @db.Uuid
+  branchId       String   @map("branch_id") @db.Uuid
+  minQuantity    Int      @map("min_quantity")
+  targetQuantity Int?     @map("target_quantity")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  version        Int      @default(1)
+
+  @@unique([skuId, branchId], map: "reorder_levels_one_per_sku_branch")
+  @@map("reorder_levels")
+}
+
+model AuditEvent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  actorUserId String   @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id") @db.Uuid
+  branchId    String?  @map("branch_id") @db.Uuid
+  details     Json     @default("{}")
+
+  @@map("audit_events")
 }
