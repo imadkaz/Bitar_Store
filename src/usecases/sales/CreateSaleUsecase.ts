@@ -39,6 +39,7 @@ async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): 
         const branch = await this.branchRepository.findById(request.branchId);
         if (!branch) throw new NotFoundError('Branch not found');
         if (!branch.isActive()) throw new ConflictError('This branch is inactive');
+        if (branch.isWarehouse()) throw new ConflictError('The warehouse does not sell to customers: it supplies the branches');
 
         const requestHash = hashSaleRequest(request);
         const skuIds = request.lines.map((line) => line.skuId);

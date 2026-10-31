@@ -33,6 +33,7 @@ function copyBranch(branch: Branch): Branch {
         code: branch.getCode(),
         name: branch.getName(),
         isActive: branch.isActive(),
+        kind: branch.getKind(),
         createdAt: branch.getCreatedAt(),
         updatedAt: branch.getUpdatedAt(),
     });

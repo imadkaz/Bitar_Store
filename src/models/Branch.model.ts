@@ -12,7 +12,14 @@ export function normalizeBranchCode(code: string): string {
     }
     return normalized;
 }
-
+export function normalizeBranchKind(kind: unknown): BranchKind {
+    if (kind === undefined || kind === null) return BranchKind.BRANCH;
+    if (typeof kind !== 'string') throw new ValidationError('Branch kind must be a string');
+    const lower = kind.trim().toLowerCase();
+    if (lower === BranchKind.WAREHOUSE) return BranchKind.WAREHOUSE;
+    if (lower === BranchKind.BRANCH) return BranchKind.BRANCH;
+    throw new ValidationError('Branch kind must be either "warehouse" or "branch"');
+}
 function validateName(name: string): string {
     if (typeof name !== 'string') throw new ValidationError('Branch name is required');
     const trimmed = name.trim();
@@ -21,10 +28,15 @@ function validateName(name: string): string {
     return trimmed;
 }
 
+export enum BranchKind {
+    WAREHOUSE = 'warehouse',
+    BRANCH = 'branch',
+}
 export interface BranchProps {
     id: string;
     code: string;
     name: string;
+    kind?: BranchKind;
     isActive?: boolean;
     createdAt?: Date;
     updatedAt?: Date;
@@ -35,10 +47,11 @@ export class Branch {
         private readonly id: string,
         private readonly code: string,
         private name: string,
+        private kind: BranchKind,
         private active: boolean,
         private readonly createdAt: Date,
         private updatedAt: Date,
-    ) {}
+    ) { }
 
     static create(props: BranchProps): Branch {
         const now = new Date();
@@ -46,6 +59,7 @@ export class Branch {
             props.id,
             normalizeBranchCode(props.code),
             validateName(props.name),
+            normalizeBranchKind(props.kind),
             props.isActive ?? true,
             props.createdAt ?? now,
             props.updatedAt ?? now,
@@ -55,7 +69,9 @@ export class Branch {
     rename(name: string): void { this.name = validateName(name); }
     deactivate(): void { this.active = false; }   // branches are deactivated, never deleted
     activate(): void { this.active = true; }
-
+    setKind(kind: BranchKind): void { this.kind = normalizeBranchKind(kind); }
+    getKind(): BranchKind { return this.kind; }
+    isWarehouse(): boolean { return this.kind === BranchKind.WAREHOUSE; }
     getId(): string { return this.id; }
     getCode(): string { return this.code; }
     getName(): string { return this.name; }

@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { Branch, normalizeBranchCode } from '../../models/Branch.model';
+import { Branch, BranchKind, normalizeBranchCode } from '../../models/Branch.model';
 import { IBranchRepository } from '../../repositories/interfaces/IBranchRepository';
 import { ConflictError } from '../../utils/exeptions/ConflictError';
 
 export interface CreateBranchInput {
     code: string;
     name: string;
+    kind: BranchKind;
 }
 
 export class CreateBranchUsecase {
@@ -16,7 +17,7 @@ export class CreateBranchUsecase {
         if (await this.branchRepository.findByCode(code)) {
             throw new ConflictError('A branch with this code already exists');
         }
-        const branch = Branch.create({ id: randomUUID(), code, name: input.name });
+        const branch = Branch.create({ id: randomUUID(), code, name: input.name, kind: input.kind });
         return this.branchRepository.save(branch, actorId);
     }
 }

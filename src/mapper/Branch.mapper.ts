@@ -1,5 +1,5 @@
 import { Branch as PrismaBranch, Prisma } from '../generated/prisma/client';
-import { Branch } from '../models/Branch.model';
+import { Branch, BranchKind } from '../models/Branch.model';
 
 export class BranchMapper {
     static toDomain(raw: PrismaBranch): Branch {
@@ -7,6 +7,7 @@ export class BranchMapper {
             id: raw.id,
             code: raw.code,
             name: raw.name,
+            kind: raw.kind as BranchKind,
             isActive: raw.isActive,
             createdAt: raw.createdAt,
             updatedAt: raw.updatedAt,
@@ -18,6 +19,7 @@ export class BranchMapper {
             id: branch.getId(),
             code: branch.getCode(),
             name: branch.getName(),
+            kind: branch.getKind(),
             isActive: branch.isActive(),
             createdBy: actorId,
             updatedBy: actorId,
@@ -25,6 +27,5 @@ export class BranchMapper {
     }
 
     static toUpdateData(branch: Branch, actorId: string | null): Prisma.BranchUncheckedUpdateInput {
-        return { name: branch.getName(), isActive: branch.isActive(), updatedBy: actorId };
+        return { name: branch.getName(), isActive: branch.isActive(), kind: branch.getKind(), updatedBy: actorId };    }
     }
-}

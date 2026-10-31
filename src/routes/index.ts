@@ -58,6 +58,15 @@ import { StockController } from '../controllers/StockController';
 import { SaleRepository } from '../repositories/SaleRepository';
 import { StockRepository } from '../repositories/StockRepository';
 import { StockAlertRepository } from '../repositories/StockAlertRepository';
+import { StockQueryRepository } from '../repositories/StockQueryRepository';
+import { ReportRepository } from '../repositories/ReportRepository';
+import { StockInsightController, ReorderLevelController, ReportController, AuditController } from '../controllers/InsightControllers';
+import { AuditRepository } from '../repositories/AuditRepository';
+import { ReorderLevelRepository } from '../repositories/ReorderLevelRepository';
+import { GetStockOverviewUsecase, ListStockMovementsUsecase, GetReplenishmentSuggestionsUsecase, GetSalesSummaryUsecase, GetTopSkusUsecase, ListAuditEventsUsecase } from '../usecases/insight/InsightUsecases';
+import { ListReorderLevelsUsecase, SetReorderLevelUsecase, SetReorderLevelForStyleUsecase, DeleteReorderLevelUsecase } from '../usecases/reorder/ReorderLevelUsecases';
+import { StockInsightRoutes, ReorderLevelRoutes, ReplenishmentRoutes, ReportRoutes, AuditRoutes } from './Insight.Routes';
+import { LocationRepository } from '../repositories/LocationRepository';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -138,6 +147,32 @@ const authController = new AuthController(
 );
 
 
+
+const stockQueryRepository = new StockQueryRepository(prisma);
+const reportRepository = new ReportRepository(prisma);
+const reorderLevelRepository = new ReorderLevelRepository(prisma);
+const locationRepository = new LocationRepository(prisma);
+
+const stockInsightController = new StockInsightController(
+    new GetStockOverviewUsecase(skuRepository, branchRepository, stockQueryRepository, reorderLevelRepository),
+    new ListStockMovementsUsecase(branchRepository, stockQueryRepository),
+);
+const reorderLevelController = new ReorderLevelController(
+    new ListReorderLevelsUsecase(branchRepository, reorderLevelRepository),
+    new SetReorderLevelUsecase(branchRepository, skuRepository, reorderLevelRepository),
+    new SetReorderLevelForStyleUsecase(branchRepository, styleRepository, reorderLevelRepository),
+    new DeleteReorderLevelUsecase(reorderLevelRepository),
+);
+const reportController = new ReportController(
+    new GetReplenishmentSuggestionsUsecase(branchRepository, locationRepository, reportRepository),
+    new GetSalesSummaryUsecase(branchRepository, reportRepository),
+    new GetTopSkusUsecase(branchRepository, reportRepository),
+);
+
+
+
+
+
 routes.use('/users', UserRoutes(userController, authenticate));
 routes.use('/branches', BranchRoutes(branchController, authenticate));
 routes.use('/styles', StyleRoutes(styleController, authenticate));
@@ -145,5 +180,10 @@ routes.use('/skus', SkuRoutes(skuController, authenticate));
 routes.use('/barcodes', BarcodeRoutes(skuController, authenticate));
 routes.use('/auth', AuthRoutes(authController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
+routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));
 routes.use('/sales', SaleRoutes(saleController, authenticate));
+routes.use('/reorder-levels', ReorderLevelRoutes(reorderLevelController, authenticate));
+routes.use('/replenishment', ReplenishmentRoutes(reportController, authenticate));
+routes.use('/reports', ReportRoutes(reportController, authenticate));
+routes.use('/audit-events', AuditRoutes(new AuditController(new ListAuditEventsUsecase(new AuditRepository(prisma))), authenticate));
 

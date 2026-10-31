@@ -13,7 +13,7 @@ export class BranchController {
     createBranch = async (req: Request, res: Response) => {
         const input = req.body ?? {};
         const branch = await this.createBranchUsecase.execute(
-            { code: input.code, name: input.name },
+            { code: input.code, name: input.name, kind: input.kind },
             getAuth(req).user.getId(),
         );
         res.status(201).json(toBranchResponse(branch));
