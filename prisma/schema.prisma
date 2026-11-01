@@ -285,3 +285,44 @@ model AuditEvent {
 
   @@map("audit_events")
 }
+
+// Add these two models at the END of prisma/schema.prisma, then run: npx prisma generate
+// (the tables transfers and transfer_lines already exist since migration 001: NO new migration for transfers)
+
+model Transfer {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference           String         @default(dbgenerated("('T-'::text || lpad((nextval('transfer_ref_seq'::regclass))::text, 8, '0'::text))"))
+  sourceBranchId      String         @map("source_branch_id") @db.Uuid
+  destinationBranchId String         @map("destination_branch_id") @db.Uuid
+  status              String         @default("draft")
+  requestedBy         String         @map("requested_by") @db.Uuid
+  requestedAt         DateTime       @default(now()) @map("requested_at") @db.Timestamptz(6)
+  dispatchedBy        String?        @map("dispatched_by") @db.Uuid
+  dispatchedAt        DateTime?      @map("dispatched_at") @db.Timestamptz(6)
+  note                String?
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy           String?        @map("created_by") @db.Uuid
+  updatedBy           String?        @map("updated_by") @db.Uuid
+  version             Int            @default(1)
+  lines               TransferLine[]
+
+  @@map("transfers")
+}
+
+model TransferLine {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transferId    String   @map("transfer_id") @db.Uuid
+  skuId         String   @map("sku_id") @db.Uuid
+  requestedQty  Int      @map("requested_qty")
+  dispatchedQty Int      @default(0) @map("dispatched_qty")
+  receivedQty   Int      @default(0) @map("received_qty")
+  resolvedQty   Int      @default(0) @map("resolved_qty")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version       Int      @default(1)
+  transfer      Transfer @relation(fields: [transferId], references: [id])
+
+  @@unique([transferId, skuId], map: "ux_transfer_lines_sku")
+  @@map("transfer_lines")
+}

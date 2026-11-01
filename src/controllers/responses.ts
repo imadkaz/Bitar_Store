@@ -13,6 +13,7 @@ import { TopSkuRow } from '../repositories/interfaces/IReportRepository';
 import { OverviewItem, ReplenishmentSuggestion, SalesSummary } from '../usecases/insight/InsightUsecases';
 import { ReorderLevelView } from '../repositories/interfaces/IReorderLevelRepository';
 import { MovementView } from '../repositories/interfaces/IStockQueryRepository';
+import { TransferView } from '../repositories/interfaces/ITransferRepository';
 
 export function toUserResponse(user: User) {
     return {
@@ -203,3 +204,24 @@ export const toAuditResponse = (e: AuditEventView) => ({
     id: e.id, occurredAt: e.occurredAt, action: e.action, entityType: e.entityType, entityId: e.entityId, branchId: e.branchId,
     by: { id: e.actorId, name: e.actorName }, details: e.details,
 });
+
+export function toTransferResponse(t: TransferView) {
+    const sum = (pick: (l: TransferView['lines'][number]) => number) => t.lines.reduce((total, l) => total + pick(l), 0);
+    return {
+        id: t.id,
+        reference: t.reference,
+        status: t.status,
+        from: t.source,
+        to: t.destination,
+        note: t.note,
+        requestedBy: t.requestedBy,
+        requestedAt: t.requestedAt,
+        dispatchedBy: t.dispatchedBy,
+        dispatchedAt: t.dispatchedAt,
+        lines: t.lines.map((l) => ({
+            sku: { id: l.skuId, code: l.skuCode, styleName: l.styleName, size: l.size, color: l.color },
+            requested: l.requestedQty, dispatched: l.dispatchedQty, received: l.receivedQty, lost: l.resolvedQty, onTheRoad: l.outstandingQty,
+        })),
+        totals: { requested: sum((l) => l.requestedQty), dispatched: sum((l) => l.dispatchedQty), received: sum((l) => l.receivedQty), lost: sum((l) => l.resolvedQty), onTheRoad: sum((l) => l.outstandingQty) },
+    };
+}
