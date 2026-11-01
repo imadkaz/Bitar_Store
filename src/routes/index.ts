@@ -67,6 +67,11 @@ import { GetStockOverviewUsecase, ListStockMovementsUsecase, GetReplenishmentSug
 import { ListReorderLevelsUsecase, SetReorderLevelUsecase, SetReorderLevelForStyleUsecase, DeleteReorderLevelUsecase } from '../usecases/reorder/ReorderLevelUsecases';
 import { StockInsightRoutes, ReorderLevelRoutes, ReplenishmentRoutes, ReportRoutes, AuditRoutes } from './Insight.Routes';
 import { LocationRepository } from '../repositories/LocationRepository';
+import { CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../usecases/transfer/TransferUsecases';
+import { TransferController } from '../controllers/TransferController';
+import { TransferRepository } from '../repositories/TransferRepository';
+import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
+import { TransferRoutes } from './Transfer.Routes';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -170,7 +175,17 @@ const reportController = new ReportController(
 );
 
 
-
+const transferRepository = new TransferRepository(prisma);
+const transferUnitOfWork = new TransferUnitOfWork(prisma);
+const transferController = new TransferController(
+    new CreateTransferUsecase(transferUnitOfWork, transferRepository),
+    new DispatchTransferUsecase(transferUnitOfWork, transferRepository, new StockAlertRepository(prisma)),
+    new ReceiveTransferUsecase(transferUnitOfWork, transferRepository),
+    new ResolveTransferUsecase(transferUnitOfWork, transferRepository),
+    new CancelTransferUsecase(transferUnitOfWork, transferRepository),
+    new GetTransferUsecase(transferRepository),
+    new ListTransfersUsecase(transferRepository),
+)
 
 
 routes.use('/users', UserRoutes(userController, authenticate));
@@ -186,4 +201,5 @@ routes.use('/reorder-levels', ReorderLevelRoutes(reorderLevelController, authent
 routes.use('/replenishment', ReplenishmentRoutes(reportController, authenticate));
 routes.use('/reports', ReportRoutes(reportController, authenticate));
 routes.use('/audit-events', AuditRoutes(new AuditController(new ListAuditEventsUsecase(new AuditRepository(prisma))), authenticate));
+routes.use('/transfers', TransferRoutes(transferController, authenticate));
 
