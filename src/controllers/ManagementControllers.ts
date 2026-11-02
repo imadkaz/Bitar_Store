@@ -5,6 +5,8 @@ import {
     CreateCategoryUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, DeleteBranchUsecase, DeleteCategoryUsecase, DeleteSkuUsecase, DeleteStyleUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, ListCategoriesUsecase, UpdateCategoryUsecase,
 } from '../usecases/management/ManagementUsecases';
 import { boolParam, intParam, textParam } from './query';
+import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adjustments/AdjustmentUsecases';
+import { AdjustmentView } from '../repositories/interfaces/IAdjustmentRepository';
 
 export class CategoryController {
     constructor(
@@ -73,4 +75,27 @@ export class PermissionController {
     setUserPermissions = async (req: Request, res: Response) => { res.status(200).json(await this.set.execute(req.params.id as string, req.body, getAuth(req))); };
     getBranchAccess = async (req: Request, res: Response) => { res.status(200).json(await this.getAccess.execute(req.params.id as string, getAuth(req))); };
     setBranchAccess = async (req: Request, res: Response) => { res.status(200).json(await this.setAccess.execute(req.params.id as string, req.body, getAuth(req))); };
+}
+
+const toAdjustmentResponse = (a: AdjustmentView) => ({
+    id: a.id, reference: a.reference, branch: a.branch, sku: a.sku, bucket: a.bucket, quantityDelta: a.quantityDelta, reason: a.reason, note: a.note, by: a.by, createdAt: a.createdAt, balanceAfter: a.balanceAfter,
+});
+
+export class AdjustmentController {
+    constructor(private readonly create: CreateAdjustmentUsecase, private readonly list: ListAdjustmentsUsecase) {}
+
+    createAdjustment = async (req: Request, res: Response) => {
+        const result = await this.create.execute(req.body, req.header('idempotency-key'), getAuth(req));
+        if (result.replayed) res.setHeader('Idempotent-Replay', 'true');
+        res.status(201).json(toAdjustmentResponse(result.adjustment));
+    };
+
+    listAdjustments = async (req: Request, res: Response) => {
+        const { items, total } = await this.list.execute(
+            { branchId: textParam(req, 'branchId'), skuId: textParam(req, 'skuId'), reason: textParam(req, 'reason'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
+            getAuth(req),
+        );
+        res.setHeader('X-Total-Count', String(total));
+        res.status(200).json(items.map(toAdjustmentResponse));
+    };
 }
