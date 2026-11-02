@@ -155,6 +155,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
 
     describe('deleting branches', () => {
         it('a new branch is deleted; one with sales, stock or recorded changes is refused (deactivate it); only the admin', async () => {
+            
             const fresh = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGD-${stamp}`, name: 'To delete' })).body.id;
             await request(app).put(`/users/${staff2Id}/branches/${fresh}`).set(as(adminId));
             expect((await request(app).delete(`/branches/${fresh}`).set(as(managerId))).status).toBe(403);
@@ -164,6 +165,8 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
             expect((await request(app).delete('/branches/abc').set(as(adminId))).status).toBe(404);
 
             const sku = await newSku((await newStyle()).id);
+            await open(sku.id, warehouseId, 2);   // the warehouse has history only once something moved there
+expect((    await request(app).delete(`/branches/${warehouseId}`).set(as(adminId))).status).toBe(409);
             await open(sku.id, hamraId, 5);
             const used = await request(app).delete(`/branches/${hamraId}`).set(as(adminId));
             expect(used.status).toBe(409);
