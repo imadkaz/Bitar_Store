@@ -72,13 +72,16 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { CategoryController, DeletionController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { AdjustmentController, CategoryController, DeletionController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
 import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { CategoryRoutes, DeleteRoutes, PermissionRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, PermissionRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
+import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
+import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
+import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adjustments/AdjustmentUsecases';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -104,6 +107,8 @@ const transferRepository = new TransferRepository(prisma);
 const transferUnitOfWork = new TransferUnitOfWork(prisma);
 const auditRepository = new AuditRepository(prisma);
 const managementRepository = new ManagementRepository(prisma);
+const adjustmentRepository = new AdjustmentRepository(prisma);
+const adjustmentUnitOfWork = new AdjustmentUnitOfWork(prisma);
 
 const authenticate = createAuthenticate(
     new GetAuthContextUsecase(userRepository, userAccessRepository),
@@ -195,6 +200,11 @@ const auditController = new AuditController(
     new ListAuditEventsUsecase(auditRepository),
 );
 
+const adjustmentController = new AdjustmentController(
+    new CreateAdjustmentUsecase(adjustmentUnitOfWork, adjustmentRepository),
+    new ListAdjustmentsUsecase(branchRepository, adjustmentRepository),
+);
+
 // ---- transfers
 const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
@@ -256,6 +266,7 @@ routes.use('/barcodes', BarcodeRoutes(skuController, authenticate));
 
 routes.use('/auth', AuthRoutes(authController, authenticate));
 
+routes.use('/stock/adjustments', AdjustmentRoutes(adjustmentController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));
 
