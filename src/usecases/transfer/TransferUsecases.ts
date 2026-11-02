@@ -49,10 +49,9 @@ abstract class TransferStepUsecase {
 export class CreateTransferUsecase extends TransferStepUsecase {
     async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): Promise<TransferActionResult> {
         const actorId = auth.user.getId();
-        if (!auth.can('transfers.dispatch')) throw new ForbiddenError('Missing permission: transfers.dispatch');
+        if (!auth.can('transfers.dispatch') && !auth.can('transfers.receive')) throw new ForbiddenError('Missing permission: transfers.dispatch');
         const key = parseIdempotencyKey(idempotencyKeyHeader);
         const request = parseCreateTransfer(body);
-        if (!auth.canAccessBranch(request.sourceBranchId)) throw new ForbiddenError('You can only prepare a transfer that leaves one of your places');
         const hash = hashOf('transfer.create', null, request);
 
         let replayed = false;
@@ -66,6 +65,11 @@ export class CreateTransferUsecase extends TransferStepUsecase {
             const destination = await tx.findPlace(request.destinationBranchId);
             if (!source || !destination) throw new NotFoundError('Place not found');
             if (!source.isActive || !destination.isActive) throw new ConflictError('Both places must be active');
+            // Two ways to prepare a transfer: send from a place of yours, OR ask the warehouse to restock a place of yours (a request:
+            // a draft that the warehouse reviews and sends, or cancels). Nobody can prepare one between two places that are not theirs.
+            const asSender = auth.can('transfers.dispatch') && auth.canAccessBranch(source.id);
+            const asRequester = auth.can('transfers.receive') && auth.canAccessBranch(destination.id) && source.isWarehouse;
+            if (!asSender && !asRequester) throw new ForbiddenError('You can prepare a transfer that leaves one of your places, or ask the warehouse to restock one of yours');
             const skuIds = request.lines.map((l) => l.skuId);
             const found = new Map((await tx.findSkus(skuIds)).map((s) => [s.skuId, s]));
             for (const skuId of skuIds) {
@@ -207,11 +211,13 @@ export class ResolveTransferUsecase extends TransferStepUsecase {
 export class CancelTransferUsecase extends TransferStepUsecase {
     async execute(rawId: string, auth: AuthContext): Promise<TransferView> {
         const actorId = auth.user.getId();
-        if (!auth.can('transfers.dispatch')) throw new ForbiddenError('Missing permission: transfers.dispatch');
+        if (!auth.can('transfers.dispatch') && !auth.can('transfers.receive')) throw new ForbiddenError('Missing permission: transfers.dispatch');
         const id = transferId(rawId);
         await this.unitOfWork.run(async (tx) => {
             const transfer = await lockedTransferFor(tx, id, auth);
-            if (!auth.canAccessBranch(transfer.sourceBranchId)) throw new ForbiddenError('Only the sending place can cancel');
+            const isSender = auth.can('transfers.dispatch') && auth.canAccessBranch(transfer.sourceBranchId);
+            const isRequester = transfer.requestedBy === actorId;
+            if (!isSender && !isRequester) throw new ForbiddenError('Only the sending place, or the person who asked, can cancel');
             if (transfer.getStatus() === 'cancelled') return;
             transfer.cancel();
             await tx.saveTransfer(transfer, actorId);

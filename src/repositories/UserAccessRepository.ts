@@ -6,9 +6,13 @@ export class UserAccessRepository implements IUserAccessRepository {
     constructor(private readonly prisma: PrismaClient) { }
 
     async findBranchIds(userId: string): Promise<string[]> {
-        const rows = await this.prisma.userBranchAccess.findMany({ where: { userId } });
-        return rows.map((r: { branchId: string }) => r.branchId);
-    }
+    // a manager appointed to ALL branches reaches every branch (never the warehouse), also the ones created later
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { allBranches: true } });
+    if (user?.allBranches) return (await this.prisma.branch.findMany({ where: { kind: 'branch' }, select: { id: true } })).map((b) => b.id);
+
+    const rows = await this.prisma.userBranchAccess.findMany({ where: { userId } });
+    return rows.map((r: { branchId: string }) => r.branchId);
+}
 
     async findOverrides(userId: string): Promise<PermissionOverride[]> {
         const rows = await this.prisma.userPermissionOverride.findMany({ where: { userId } });

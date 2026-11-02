@@ -8,5 +8,7 @@ export const BranchRoutes = (controller: BranchController, authenticate: Request
     const route = Router();
     route.get('/', authenticate, asyncHandler(controller.listBranches));
     route.post('/', authenticate, requireRole(UserRole.ADMIN), asyncHandler(controller.createBranch));
+    route.patch('/:id', authenticate, requireRole(UserRole.ADMIN), asyncHandler(controller.updateBranch));   // name, isActive, kind
+    
     return route;
 };

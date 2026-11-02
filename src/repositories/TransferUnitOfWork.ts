@@ -24,7 +24,7 @@ class PrismaTransferTransaction implements TransferTransaction {
 
     async findPlace(id: string): Promise<PlaceInfo | null> {
         const row = await this.tx.branch.findUnique({ where: { id } });
-        return row ? { id: row.id, code: row.code, name: row.name, isActive: row.isActive } : null;
+        return row ? { id: row.id, code: row.code, name: row.name, isActive: row.isActive, isWarehouse: row.kind === 'warehouse' } : null;
     }
 
     async insertTransfer(transfer: Transfer, actorId: string): Promise<void> {

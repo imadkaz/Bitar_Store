@@ -72,6 +72,13 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
+import { CategoryController, DeletionController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { ManagementRepository } from '../repositories/ManagementRepository';
+import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
+import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase } from '../usecases/management/ManagementUsecases';
+import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
+import { CategoryRoutes, DeleteRoutes, PermissionRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -79,18 +86,30 @@ export const routes = Router();
 // ---- shared
 const userRepository = new UserRepository(prisma);
 const branchRepository = new BranchRepository(prisma);
-const userAccessRepository = new UserAccessRepository(prisma);  
+const userAccessRepository = new UserAccessRepository(prisma);
 const tokenService = new JwtTokenService(config.jwtSecret, config.jwtExpiresIn);
 const styleRepository = new StyleRepository(prisma);
+const stockRepository = new StockRepository(prisma);
+const stockAlertRepository = new StockAlertRepository(prisma);
+const saleRepository = new SaleRepository(prisma);
+const salesUnitOfWork = new SalesUnitOfWork(prisma);
+const salesHistoryRepository = new SalesHistoryRepository(prisma);
 const skuRepository = new SkuRepository(prisma);
 const barcodeRepository = new BarcodeRepository(prisma);
+const stockQueryRepository = new StockQueryRepository(prisma);
+const reportRepository = new ReportRepository(prisma);
+const reorderLevelRepository = new ReorderLevelRepository(prisma);
+const locationRepository = new LocationRepository(prisma);
+const transferRepository = new TransferRepository(prisma);
+const transferUnitOfWork = new TransferUnitOfWork(prisma);
+const auditRepository = new AuditRepository(prisma);
+const managementRepository = new ManagementRepository(prisma);
 
 const authenticate = createAuthenticate(
-   new GetAuthContextUsecase(userRepository, userAccessRepository),
+    new GetAuthContextUsecase(userRepository, userAccessRepository),
     tokenService,
     { allowDevHeader: config.authMode === 'dev' },
 );
-
 
 // ---- users
 const userController = new UserController(
@@ -100,19 +119,22 @@ const userController = new UserController(
     new GrantBranchAccessUsecase(userRepository, branchRepository, userAccessRepository),
     new RevokeBranchAccessUsecase(userRepository, userAccessRepository),
     new DeleteUserUsecase(userRepository),
-    new SetUserPasswordUsecase(userRepository)
+    new SetUserPasswordUsecase(userRepository),
 );
 
+// ---- branches (the second argument lets a branch be created as THE warehouse: only one)
 const branchController = new BranchController(
-    new CreateBranchUsecase(branchRepository),
+    new CreateBranchUsecase(branchRepository, locationRepository),
     new ListBranchesUsecase(branchRepository),
+    new UpdateBranchUsecase(branchRepository, locationRepository),
 );
 
+// ---- catalog
 const styleController = new StyleController(
     new CreateStyleUsecase(styleRepository),
     new ListStylesUsecase(styleRepository),
     new GetStyleUsecase(styleRepository, skuRepository),
-    new UpdateStyleUsecase(styleRepository)
+    new UpdateStyleUsecase(styleRepository),
 );
 
 const skuController = new SkuController(
@@ -127,9 +149,7 @@ const skuController = new SkuController(
     new RemoveBarcodeUsecase(barcodeRepository),
 );
 
-const stockRepository = new StockRepository(prisma);
-const saleRepository = new SaleRepository(prisma);
-
+// ---- stock and sales
 const stockController = new StockController(
     new ListStockUsecase(skuRepository, stockRepository),
     new SetOpeningStockUsecase(branchRepository, skuRepository, stockRepository),
@@ -137,27 +157,25 @@ const stockController = new StockController(
 
 const saleController = new SaleController(
     new CreateSaleUsecase(
-        new SalesUnitOfWork(prisma), 
-        branchRepository, saleRepository, 
-        new StockAlertRepository(prisma)
+        salesUnitOfWork,
+        branchRepository,
+        saleRepository,
+        stockAlertRepository,
     ),
     new GetSaleUsecase(saleRepository),
     new ListSalesUsecase(saleRepository),
 );
 
-
-
-const authController = new AuthController(
-    new LoginUsecase(userRepository, tokenService)
+const salesHistoryController = new SalesHistoryController(
+    new ListSalesHistoryUsecase(branchRepository, salesHistoryRepository),
 );
 
+// ---- auth
+const authController = new AuthController(
+    new LoginUsecase(userRepository, tokenService),
+);
 
-
-const stockQueryRepository = new StockQueryRepository(prisma);
-const reportRepository = new ReportRepository(prisma);
-const reorderLevelRepository = new ReorderLevelRepository(prisma);
-const locationRepository = new LocationRepository(prisma);
-
+// ---- the warehouse view: every place, minimums, what to send, reports, audit
 const stockInsightController = new StockInsightController(
     new GetStockOverviewUsecase(skuRepository, branchRepository, stockQueryRepository, reorderLevelRepository),
     new ListStockMovementsUsecase(branchRepository, stockQueryRepository),
@@ -173,33 +191,81 @@ const reportController = new ReportController(
     new GetSalesSummaryUsecase(branchRepository, reportRepository),
     new GetTopSkusUsecase(branchRepository, reportRepository),
 );
+const auditController = new AuditController(
+    new ListAuditEventsUsecase(auditRepository),
+);
 
-
-const transferRepository = new TransferRepository(prisma);
-const transferUnitOfWork = new TransferUnitOfWork(prisma);
+// ---- transfers
 const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
-    new DispatchTransferUsecase(transferUnitOfWork, transferRepository, new StockAlertRepository(prisma)),
+    new DispatchTransferUsecase(transferUnitOfWork, transferRepository, stockAlertRepository),
     new ReceiveTransferUsecase(transferUnitOfWork, transferRepository),
     new ResolveTransferUsecase(transferUnitOfWork, transferRepository),
     new CancelTransferUsecase(transferUnitOfWork, transferRepository),
     new GetTransferUsecase(transferRepository),
     new ListTransfersUsecase(transferRepository),
-)
+);
 
+// ---- what the owner manages: categories, deleting, permissions, the warehouse lookup
+const categoryController = new CategoryController(
+    new ListCategoriesUsecase(managementRepository),
+    new CreateCategoryUsecase(managementRepository),
+    new UpdateCategoryUsecase(managementRepository),
+    new DeleteCategoryUsecase(managementRepository),
+);
+const deleteController = new DeletionController(
+    new DeleteStyleUsecase(managementRepository),
+    new DeleteSkuUsecase(managementRepository),
+    new DeleteBranchUsecase(managementRepository),
+    new SoftDeleteUserUsecase(managementRepository),
+);
+const permissionController = new PermissionController(
+    new GetPermissionCatalogUsecase(),
+    new GetUserPermissionsUsecase(managementRepository),
+    new SetUserPermissionsUsecase(managementRepository),
+    new GetBranchAccessUsecase(managementRepository),
+    new SetBranchAccessUsecase(managementRepository),
+);
+const warehouseController = new WarehouseController(
+    new GetWarehouseUsecase(locationRepository),
+);
 
+const deleteRoutes = DeleteRoutes(deleteController, authenticate);
+const permissionRoutes = PermissionRoutes(permissionController, authenticate);
+
+// ---- the routes
+// ORDER MATTERS. Express answers with the FIRST router that matches. A router that does more than one thing
+// (UserRoutes has a requireRole(admin) at its top, SaleRoutes has GET /:id) would swallow the new paths,
+// so the specific routers come BEFORE the general one on the same prefix.
+
+// users: delete (soft), permissions and branch access first, then the general user routes
+routes.use('/users', deleteRoutes.users);
+routes.use('/users', permissionRoutes.users);
+routes.use('/permissions', permissionRoutes.catalog);
 routes.use('/users', UserRoutes(userController, authenticate));
+
+routes.use('/branches', deleteRoutes.branches);
 routes.use('/branches', BranchRoutes(branchController, authenticate));
+
+routes.use('/categories', CategoryRoutes(categoryController, authenticate));
+routes.use('/styles', deleteRoutes.styles);
 routes.use('/styles', StyleRoutes(styleController, authenticate));
+routes.use('/skus', deleteRoutes.skus);
 routes.use('/skus', SkuRoutes(skuController, authenticate));
 routes.use('/barcodes', BarcodeRoutes(skuController, authenticate));
+
 routes.use('/auth', AuthRoutes(authController, authenticate));
+
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));
+
+// "/sales/history" BEFORE "/sales", or "/sales/:id" takes "history" as an id
+routes.use('/sales/history', SalesHistoryRoutes(salesHistoryController, authenticate));
 routes.use('/sales', SaleRoutes(saleController, authenticate));
+
 routes.use('/reorder-levels', ReorderLevelRoutes(reorderLevelController, authenticate));
 routes.use('/replenishment', ReplenishmentRoutes(reportController, authenticate));
 routes.use('/reports', ReportRoutes(reportController, authenticate));
-routes.use('/audit-events', AuditRoutes(new AuditController(new ListAuditEventsUsecase(new AuditRepository(prisma))), authenticate));
+routes.use('/audit-events', AuditRoutes(auditController, authenticate));
 routes.use('/transfers', TransferRoutes(transferController, authenticate));
-
+routes.use('/warehouse', WarehouseRoutes(warehouseController, authenticate));

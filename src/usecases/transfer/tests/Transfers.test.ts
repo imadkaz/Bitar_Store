@@ -78,11 +78,33 @@ describe('transfers between the warehouse and the branches', () => {
             await expect(create.execute(draftBody({ note: 'another' }), k, auth)).rejects.toThrow('different request');
         });
 
-        it('needs the dispatch permission and a place of yours as the sender', async () => {
-            await expect(create.execute(draftBody({ sourceBranchId: hamra.id, destinationBranchId: wh.id }), key(), hamraStaff())).rejects.toThrow('Missing permission: transfers.dispatch');
-            await expect(create.execute(draftBody(), key(), hamraManager())).rejects.toBeInstanceOf(ForbiddenError);           // the warehouse is not Hamra's
-            const back = await create.execute(draftBody({ sourceBranchId: hamra.id, destinationBranchId: wh.id }), key(), hamraManager());      // but Hamra may send back
+        it('send from a place of yours, or ask the warehouse to restock one of yours: nothing else', async () => {
+            const back = await create.execute(draftBody({ sourceBranchId: hamra.id, destinationBranchId: wh.id }), key(), hamraManager());      // Hamra's manager sends back
             expect(back.transfer.source.code).toBe('HAMRA');
+            await expect(create.execute(draftBody({ sourceBranchId: hamra.id, destinationBranchId: wh.id }), key(), hamraStaff())).rejects.toThrow('prepare a transfer that leaves one of your places');   // an employee does not send
+            await expect(create.execute(draftBody({ sourceBranchId: hamra.id, destinationBranchId: tripoli.id }), key(), hamraStaff())).rejects.toBeInstanceOf(ForbiddenError);
+            await expect(create.execute(draftBody(), key(), tripoliManager())).rejects.toBeInstanceOf(ForbiddenError);           // asking for a place that is not yours
+        });
+
+        it('a branch can ASK the warehouse to restock it: a draft that the warehouse reviews and sends', async () => {
+            for (const asker of [hamraStaff(), hamraManager()]) {
+                const { transfer } = await create.execute(draftBody(), key(), asker);
+                expect(transfer).toMatchObject({ status: 'draft', source: { code: 'WAREHOUSE' }, destination: { code: 'HAMRA' } });
+                expect(transfer.requestedBy.id).toBe(asker.user.getId());
+            }
+            expect(world.qty(wh.id, dress.skuId, 'sellable')).toBe(50);                          // asking moves nothing
+            const asked = (await create.execute(draftBody(), key(), hamraStaff())).transfer;
+            await expect(dispatch.execute(asked.id, {}, key(), hamraStaff())).rejects.toThrow('Missing permission');               // the one who asked cannot send it
+            await expect(dispatch.execute(asked.id, {}, key(), hamraManager())).rejects.toThrow('Only the sending place can dispatch');
+            expect((await dispatch.execute(asked.id, {}, key(), admin())).transfer.status).toBe('dispatched');                      // the warehouse sends it
+            expect((await receive.execute(asked.id, { lines: [{ skuId: dress.skuId, accepted: 10 }, { skuId: cap.skuId, accepted: 4 }] }, key(), hamraStaff())).transfer.status).toBe('received');
+        });
+
+        it('the person who asked can cancel their own request, nobody else on the receiving side can', async () => {
+            const me = hamraStaff();
+            const asked = (await create.execute(draftBody(), key(), me)).transfer;
+            await expect(cancel.execute(asked.id, hamraStaff())).rejects.toBeInstanceOf(ForbiddenError);                          // another employee
+            expect((await cancel.execute(asked.id, me)).status).toBe('cancelled');
         });
 
         it('refuses unknown or closed places, unknown or inactive skus, and bad bodies', async () => {
@@ -280,7 +302,7 @@ describe('transfers between the warehouse and the branches', () => {
         it('only the sender, with the permission', async () => {
             const t = await makeDraft();
             await expect(cancel.execute(t.id, hamraManager())).rejects.toBeInstanceOf(ForbiddenError);
-            await expect(cancel.execute(t.id, hamraStaff())).rejects.toThrow('Missing permission');
+            await expect(cancel.execute(t.id, hamraStaff())).rejects.toThrow('Only the sending place, or the person who asked');
             await expect(cancel.execute(t.id, tripoliManager())).rejects.toBeInstanceOf(NotFoundError);
         });
     });

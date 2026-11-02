@@ -1,4 +1,4 @@
-import { Branch, BranchKind, normalizeBranchKind } from '../../models/Branch.model';
+import { Branch, normalizeBranchKind } from '../../models/Branch.model';
 import { IBranchRepository } from '../../repositories/interfaces/IBranchRepository';
 import { ILocationRepository } from '../../repositories/interfaces/ILocationRepository';
 import { ConflictError } from '../../utils/exeptions/ConflictError';
@@ -7,7 +7,7 @@ import { ValidationError } from '../../utils/exeptions/ValidationError';
 import { isUuid } from '../../utils/uuid';
 
 export class UpdateBranchUsecase {
-    constructor(private readonly branches: IBranchRepository, private readonly locations: ILocationRepository) { }
+    constructor(private readonly branches: IBranchRepository, private readonly locations: ILocationRepository) {}
 
     // Admin only (the route says so). Name, active flag and kind: what changed is written together with its audit event.
     async execute(id: string, body: unknown, actorId: string): Promise<Branch> {
@@ -31,7 +31,7 @@ export class UpdateBranchUsecase {
         }
         if (input.kind !== undefined) {
             const kind = normalizeBranchKind(input.kind);
-            if (kind === BranchKind.WAREHOUSE && !branch.isWarehouse()) {
+            if (kind === 'warehouse' && !branch.isWarehouse()) {
                 const existing = await this.locations.findWarehouse();
                 if (existing && existing.getId() !== branch.getId()) throw new ConflictError('There is already a warehouse');
                 if (await this.locations.hasActivity(branch.getId())) throw new ConflictError('This branch already has sales or minimum levels: it cannot become the warehouse');
