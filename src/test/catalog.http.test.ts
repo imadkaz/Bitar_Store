@@ -28,7 +28,7 @@ let managerId = '';
 let employeeId = '';
 
 beforeAll(async () => {
-    await waitForDatabase(prisma);
+    for (const name of ['Clothing', 'Tops', 'Bottoms']) if (!(await prisma.category.findFirst({ where: { name } }))) await prisma.category.create({ data: { name } });    await waitForDatabase(prisma);
     adminId = (await createUserWithPassword(repo, { email: mail('cadmin'), password: 'Password#123', fullName: 'Cat Admin', role: UserRole.ADMIN }, null)).getId();
     managerId = (await createUserWithPassword(repo, { email: mail('cmanager'), password: 'Password#123', fullName: 'Cat Manager', role: UserRole.MANAGER }, adminId)).getId();
     employeeId = (await createUserWithPassword(repo, { email: mail('cemployee'), password: 'Password#123', fullName: 'Cat Employee', role: UserRole.EMPLOYEE }, adminId)).getId();

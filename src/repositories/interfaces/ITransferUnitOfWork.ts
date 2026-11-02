@@ -7,6 +7,7 @@ export interface PlaceInfo {
     code: string;
     name: string;
     isActive: boolean;
+    isWarehouse: boolean;
 }
 
 // Everything a transfer step does inside ONE database transaction. If anything throws, everything is undone.

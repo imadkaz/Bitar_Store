@@ -1,8 +1,13 @@
 import { Prisma, PrismaClient } from '../generated/prisma/client';
 import { StyleMapper } from '../mapper/Style.Mapper';
 import { Style } from '../models/Style.model';
+import { ValidationError } from '../utils/exeptions/ValidationError';
 import { ConflictError } from '../utils/exeptions/ConflictError';
 import { IStyleRepository, StyleFilter } from './interfaces/IStyleRepository';
+
+const UNKNOWN_CATEGORY = 'This category does not exist: add it in Categories first';
+// the database refuses a category that is not in the list (foreign key styles_category_fk)
+const isUnknownCategory = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003';
 
 export class StyleRepository implements IStyleRepository {
     constructor(private readonly prisma: PrismaClient) {}
@@ -37,7 +42,7 @@ export class StyleRepository implements IStyleRepository {
         return rows.map(StyleMapper.toDomain);
     }
 
-    async save(style: Style, actorId: string): Promise<Style> {
+    async save(style: Style, actorId: string | null): Promise<Style> {
         try {
             const raw = await this.prisma.style.create({ data: StyleMapper.toPersistence(style, actorId) });
             return StyleMapper.toDomain(raw);
@@ -46,15 +51,21 @@ export class StyleRepository implements IStyleRepository {
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
                 throw new ConflictError('A style with this code already exists');
             }
+            if (isUnknownCategory(error)) throw new ValidationError(UNKNOWN_CATEGORY);
             throw error;
         }
     }
 
-    async update(style: Style, actorId: string): Promise<Style> {
-        const raw = await this.prisma.style.update({
-            where: { id: style.getId() },
-            data: StyleMapper.toUpdateData(style, actorId),
-        });
-        return StyleMapper.toDomain(raw);
+    async update(style: Style, actorId: string | null): Promise<Style> {
+        try {
+            const raw = await this.prisma.style.update({
+                where: { id: style.getId() },
+                data: StyleMapper.toUpdateData(style, actorId),
+            });
+            return StyleMapper.toDomain(raw);
+        } catch (error) {
+            if (isUnknownCategory(error)) throw new ValidationError(UNKNOWN_CATEGORY);
+            throw error;
+        }
     }
 }

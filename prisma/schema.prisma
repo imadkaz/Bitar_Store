@@ -26,7 +26,9 @@ model User {
   createdBy     String?   @map("created_by") @db.Uuid
   updatedBy     String?   @map("updated_by") @db.Uuid
   version       Int       @default(1)
-
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  allBranches   Boolean   @default(false) @map("all_branches")
+  
   @@map("users")
 }
 
@@ -325,4 +327,20 @@ model TransferLine {
 
   @@unique([transferId, skuId], map: "ux_transfer_lines_sku")
   @@map("transfer_lines")
+}
+// 1) In the EXISTING model User add this line before @@map:
+//      deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+// 2) Add this model at the end of prisma/schema.prisma, then: npx prisma generate
+
+model Category {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  version   Int      @default(1)
+
+  @@map("categories")
 }

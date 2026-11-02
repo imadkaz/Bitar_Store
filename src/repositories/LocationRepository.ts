@@ -9,7 +9,7 @@ export class LocationRepository implements ILocationRepository {
     constructor(private readonly prisma: PrismaClient) {}
 
     async findWarehouse(): Promise<Branch | null> {
-        const raw = await this.prisma.branch.findFirst({ where: { kind: 'WAREHOUSE' } });
+        const raw = await this.prisma.branch.findFirst({ where: { kind: 'warehouse' } });
         return raw ? BranchMapper.toDomain(raw) : null;
     }
 

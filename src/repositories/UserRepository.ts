@@ -20,7 +20,7 @@ export class UserRepository implements IUserRepository {
     }
     
     async list(): Promise<User[]> {
-        const rows = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
+        const rows = await this.prisma.user.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
         return rows.map(UserMapper.toDomain);
     }
     

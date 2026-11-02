@@ -3,11 +3,13 @@ import { getAuth } from '../middlewares/Authenticate';
 import { CreateBranchUsecase } from '../usecases/branch/CreateBranchUsecase';
 import { ListBranchesUsecase } from '../usecases/branch/ListBranchesUsecase';
 import { toBranchResponse } from './responses';
+import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 
 export class BranchController {
     constructor(
         private readonly createBranchUsecase: CreateBranchUsecase,
         private readonly listBranchesUsecase: ListBranchesUsecase,
+        private readonly updateBranchUsecase: UpdateBranchUsecase,
     ) {}
 
     createBranch = async (req: Request, res: Response) => {
@@ -17,6 +19,11 @@ export class BranchController {
             getAuth(req).user.getId(),
         );
         res.status(201).json(toBranchResponse(branch));
+    };
+
+    updateBranch = async (req: Request, res: Response) => {
+        const branch = await this.updateBranchUsecase.execute(req.params.id as string, req.body, getAuth(req).user.getId());
+        res.status(200).json(toBranchResponse(branch));
     };
 
     listBranches = async (req: Request, res: Response) => {

@@ -39,7 +39,7 @@ export class FakeTransferWorld {
     private counter = 0;
 
     addPlace(code: string, kind = 'branch', isActive = true): PlaceInfo & { kind: string } {
-        const place = { id: randomUUID(), code, name: code, isActive, kind };
+        const place = { id: randomUUID(), code, name: code, isActive, kind, isWarehouse: kind === 'warehouse' };
         this.places.set(place.id, place);
         return place;
     }

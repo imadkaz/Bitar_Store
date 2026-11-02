@@ -28,6 +28,7 @@ const newStyle = (patch = {}) => Style.create({ id: randomUUID(), code: code('S'
 const newSku = (styleId: string, patch = {}) => Sku.create({ id: randomUUID(), styleId, skuCode: code('K'), size: 'M', color: 'Red', standardPriceCents: 2500, ...patch });
 
 beforeAll(async () => {
+    for (const name of ['Clothing', 'Tops', 'Bottoms']) if (!(await prisma.category.findFirst({ where: { name } }))) await prisma.category.create({ data: { name } });
     await waitForDatabase(prisma);
     actorId = (await createUserWithPassword(new UserRepository(prisma), { email: `ci-${stamp}@bitar.test`, password: 'Password#123', fullName: 'CI Actor', role: UserRole.ADMIN }, null)).getId();
 }, 60_000);
