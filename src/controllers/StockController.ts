@@ -23,7 +23,7 @@ export class StockController {
         res.setHeader('X-Total-Count', String(total));
         res.status(200).json(items.map(toStockItemResponse));
 
-        res.status(200).json(items.map(toStockItemResponse));
+        // res.status(200).json(items.map(toStockItemResponse));
     };
 
     // POST /stock/opening  with the header  Idempotency-Key

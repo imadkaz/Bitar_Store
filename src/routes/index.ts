@@ -72,6 +72,12 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
+import { DashboardRepository } from '../repositories/DashboardRepository';
+import { GetDashboardOverviewUsecase } from '../usecases/dashboard/GetDashboardOverviewUsecase';
+import { DashboardController } from '../controllers/DashboardController';
+import { DashboardRoutes } from './Dashboard.Routes';
+import { asyncHandler } from '../middlewares/asyncHandler';
+import { NotFoundError } from '../utils/exeptions/NotFoundError';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -155,6 +161,7 @@ const authController = new AuthController(
 
 const stockQueryRepository = new StockQueryRepository(prisma);
 const reportRepository = new ReportRepository(prisma);
+const dashboardRepository = new DashboardRepository(prisma);
 const reorderLevelRepository = new ReorderLevelRepository(prisma);
 const locationRepository = new LocationRepository(prisma);
 
@@ -173,6 +180,9 @@ const reportController = new ReportController(
     new GetSalesSummaryUsecase(branchRepository, reportRepository),
     new GetTopSkusUsecase(branchRepository, reportRepository),
 );
+const dashboardController = new DashboardController(
+    new GetDashboardOverviewUsecase(branchRepository, dashboardRepository),
+);
 
 
 const transferRepository = new TransferRepository(prisma);
@@ -189,6 +199,13 @@ const transferController = new TransferController(
 
 
 routes.use('/users', UserRoutes(userController, authenticate));
+
+routes.get('/warehouse', authenticate, asyncHandler(async (_req, res) => {
+    const warehouse = await locationRepository.findWarehouse();
+    if (!warehouse) throw new NotFoundError('No warehouse configured');
+    res.status(200).json({ id: warehouse.getId(), code: warehouse.getCode(), name: warehouse.getName() });
+}));
+
 routes.use('/branches', BranchRoutes(branchController, authenticate));
 routes.use('/styles', StyleRoutes(styleController, authenticate));
 routes.use('/skus', SkuRoutes(skuController, authenticate));
@@ -200,6 +217,6 @@ routes.use('/sales', SaleRoutes(saleController, authenticate));
 routes.use('/reorder-levels', ReorderLevelRoutes(reorderLevelController, authenticate));
 routes.use('/replenishment', ReplenishmentRoutes(reportController, authenticate));
 routes.use('/reports', ReportRoutes(reportController, authenticate));
+routes.use('/dashboard', DashboardRoutes(dashboardController, authenticate));
 routes.use('/audit-events', AuditRoutes(new AuditController(new ListAuditEventsUsecase(new AuditRepository(prisma))), authenticate));
 routes.use('/transfers', TransferRoutes(transferController, authenticate));
-
