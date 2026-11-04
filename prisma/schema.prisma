@@ -176,6 +176,7 @@ model StockMovement {
   actorUserId        String   @map("actor_user_id") @db.Uuid
   idempotencyKeyId   String   @map("idempotency_key_id") @db.Uuid
   occurredAt         DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  goodsReceiptId     String?  @map("goods_receipt_id") @db.Uuid
 
   @@map("stock_movements")
 }
@@ -343,4 +344,50 @@ model Category {
   version   Int      @default(1)
 
   @@map("categories")
+}
+
+
+model Adjustment {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference        String   @default(dbgenerated("('A-'::text || lpad((nextval('adjustment_ref_seq'::regclass))::text, 8, '0'::text))"))
+  branchId         String   @map("branch_id") @db.Uuid
+  skuId            String   @map("sku_id") @db.Uuid
+  bucket           String   @default("sellable")
+  quantityDelta    Int      @map("quantity_delta")
+  reason           String
+  note             String
+  adjustedBy       String   @map("adjusted_by") @db.Uuid
+  idempotencyKeyId String   @unique @map("idempotency_key_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("adjustments")
+}
+
+model GoodsReceipt {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference             String   @default(dbgenerated("('GR-'::text || lpad((nextval('goods_receipt_ref_seq'::regclass))::text, 8, '0'::text))"))
+  branchId              String   @map("branch_id") @db.Uuid
+  supplierName          String   @map("supplier_name")
+  supplierInvoiceNumber String   @map("supplier_invoice_number")
+  invoiceDate           DateTime @map("invoice_date") @db.Date
+  currency              String   @default("USD")
+  note                  String?
+  totalCost             Decimal  @map("total_cost") @db.Decimal(14, 2)
+  receivedBy            String   @map("received_by") @db.Uuid
+  idempotencyKeyId      String   @unique @map("idempotency_key_id") @db.Uuid
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lines                 GoodsReceiptLine[]
+
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptLine {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptId String  @map("receipt_id") @db.Uuid
+  skuId     String  @map("sku_id") @db.Uuid
+  quantity  Int
+  unitCost  Decimal @map("unit_cost") @db.Decimal(12, 2)
+  receipt   GoodsReceipt @relation(fields: [receiptId], references: [id])
+
+  @@map("goods_receipt_lines")
 }

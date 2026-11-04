@@ -1,5 +1,5 @@
 import { RequestHandler, Router } from 'express';
-import { CategoryController, DeletionController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { CategoryController, DeletionController, GoodsReceiptController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { asyncHandler } from '../middlewares/asyncHandler';
 
 // Each of these routers is mounted BEFORE the existing one on the same prefix and answers only what is new (a DELETE, /history):
@@ -32,3 +32,9 @@ export const PermissionRoutes = (controller: PermissionController, authenticate:
         .get('/:id/branch-access', authenticate, asyncHandler(controller.getBranchAccess))
         .put('/:id/branch-access', authenticate, asyncHandler(controller.setBranchAccess)),
 });
+
+export const GoodsReceiptRoutes = (controller: GoodsReceiptController, authenticate: RequestHandler): Router =>
+    Router()
+        .get('/', authenticate, asyncHandler(controller.listReceipts))
+        .post('/', authenticate, asyncHandler(controller.createReceipt))
+        .get('/:id', authenticate, asyncHandler(controller.getReceipt));

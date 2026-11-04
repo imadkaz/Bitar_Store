@@ -72,12 +72,18 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { CategoryController, DeletionController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { GoodsReceiptController, AdjustmentController, CategoryController, DeletionController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
+import { GoodsReceiptRepository } from '../repositories/GoodsReceiptRepository';
+import { GoodsReceiptUnitOfWork } from '../repositories/GoodsReceiptUnitOfWork';
+import { CreateGoodsReceiptUsecase, GetGoodsReceiptUsecase, ListGoodsReceiptsUsecase } from '../usecases/goodsreceipts/GoodsReceiptUsecases';
+import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
+import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adjustments/AdjustmentUsecases';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
-import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase } from '../usecases/management/ManagementUsecases';
+import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, ListPlacesUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { CategoryRoutes, DeleteRoutes, PermissionRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { GoodsReceiptRoutes, AdjustmentRoutes, CategoryRoutes, DeleteRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
@@ -104,6 +110,10 @@ const transferRepository = new TransferRepository(prisma);
 const transferUnitOfWork = new TransferUnitOfWork(prisma);
 const auditRepository = new AuditRepository(prisma);
 const managementRepository = new ManagementRepository(prisma);
+const adjustmentRepository = new AdjustmentRepository(prisma);
+const adjustmentUnitOfWork = new AdjustmentUnitOfWork(prisma);
+const goodsReceiptRepository = new GoodsReceiptRepository(prisma);
+const goodsReceiptUnitOfWork = new GoodsReceiptUnitOfWork(prisma);
 
 const authenticate = createAuthenticate(
     new GetAuthContextUsecase(userRepository, userAccessRepository),
@@ -195,6 +205,19 @@ const auditController = new AuditController(
     new ListAuditEventsUsecase(auditRepository),
 );
 
+// ---- stock adjustments (count corrections, damaged, lost, found)
+const adjustmentController = new AdjustmentController(
+    new CreateAdjustmentUsecase(adjustmentUnitOfWork, adjustmentRepository),
+    new ListAdjustmentsUsecase(branchRepository, adjustmentRepository),
+);
+
+// ---- goods receipts (a delivery from a supplier into the warehouse)
+const goodsReceiptController = new GoodsReceiptController(
+    new CreateGoodsReceiptUsecase(locationRepository, goodsReceiptUnitOfWork, goodsReceiptRepository),
+    new GetGoodsReceiptUsecase(locationRepository, goodsReceiptRepository),
+    new ListGoodsReceiptsUsecase(locationRepository, goodsReceiptRepository),
+);
+
 // ---- transfers
 const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
@@ -229,6 +252,9 @@ const permissionController = new PermissionController(
 const warehouseController = new WarehouseController(
     new GetWarehouseUsecase(locationRepository),
 );
+const placesController = new PlacesController(
+    new ListPlacesUsecase(branchRepository),
+);
 
 const deleteRoutes = DeleteRoutes(deleteController, authenticate);
 const permissionRoutes = PermissionRoutes(permissionController, authenticate);
@@ -256,6 +282,9 @@ routes.use('/barcodes', BarcodeRoutes(skuController, authenticate));
 
 routes.use('/auth', AuthRoutes(authController, authenticate));
 
+// "/stock/adjustments" BEFORE "/stock" (the more specific path first)
+routes.use('/stock/adjustments', AdjustmentRoutes(adjustmentController, authenticate));
+routes.use('/goods-receipts', GoodsReceiptRoutes(goodsReceiptController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));
 
@@ -269,3 +298,4 @@ routes.use('/reports', ReportRoutes(reportController, authenticate));
 routes.use('/audit-events', AuditRoutes(auditController, authenticate));
 routes.use('/transfers', TransferRoutes(transferController, authenticate));
 routes.use('/warehouse', WarehouseRoutes(warehouseController, authenticate));
+routes.use('/places', PlacesRoutes(placesController, authenticate));
