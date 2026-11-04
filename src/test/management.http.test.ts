@@ -66,6 +66,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
         const all = await request(app).get('/branches').set(as(adminId));
         warehouseId = all.body.find((b: { kind: string }) => b.kind === 'warehouse')?.id;
         if (!warehouseId) warehouseId = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGW-${stamp}`, name: 'Main Warehouse (test)', kind: 'warehouse' })).body.id;
+        await request(app).patch(`/branches/${warehouseId}`).set(as(adminId)).send({ isActive: true });   // an earlier test may have left the one and only warehouse inactive
     }, 120_000);
 
     describe('categories', () => {
@@ -155,7 +156,6 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
 
     describe('deleting branches', () => {
         it('a new branch is deleted; one with sales, stock or recorded changes is refused (deactivate it); only the admin', async () => {
-            
             const fresh = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGD-${stamp}`, name: 'To delete' })).body.id;
             await request(app).put(`/users/${staff2Id}/branches/${fresh}`).set(as(adminId));
             expect((await request(app).delete(`/branches/${fresh}`).set(as(managerId))).status).toBe(403);
@@ -165,12 +165,11 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
             expect((await request(app).delete('/branches/abc').set(as(adminId))).status).toBe(404);
 
             const sku = await newSku((await newStyle()).id);
-            await open(sku.id, warehouseId, 2);   // the warehouse has history only once something moved there
-expect((    await request(app).delete(`/branches/${warehouseId}`).set(as(adminId))).status).toBe(409);
             await open(sku.id, hamraId, 5);
             const used = await request(app).delete(`/branches/${hamraId}`).set(as(adminId));
             expect(used.status).toBe(409);
             expect(used.body.message).toMatch(/deactivate it instead/);
+            await open(sku.id, warehouseId, 2);                                                       // the warehouse has history only once something moved there (on a fresh database it has none)
             expect((await request(app).delete(`/branches/${warehouseId}`).set(as(adminId))).status).toBe(409);
 
             const renamed = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGR-${stamp}`, name: 'Renamed' })).body.id;
@@ -479,6 +478,39 @@ expect((    await request(app).delete(`/branches/${warehouseId}`).set(as(adminId
             await access(mgr, 'all');
             const after = await request(app).get(`/audit-events?entityType=user&entityId=${mgr}`).set(as(adminId));
             expect(after.body.find((e: { action: string }) => e.action === 'user.branch_access')).toMatchObject({ by: { id: adminId }, details: { before: 'selected', after: 'all' } });
+        });
+    });
+
+
+    describe('the places a transfer can go to', () => {
+        it('anyone who may send or receive transfers sees every active place (name and kind only), the warehouse first; an employee who is allowed to send can fill the whole form', async () => {
+            const employeeId = await make('plc', UserRole.EMPLOYEE);
+            await request(app).put(`/users/${employeeId}/branches/${hamraId}`).set(as(adminId));
+            expect((await request(app).get('/branches').set(as(employeeId))).body.map((b: { id: string }) => b.id)).toEqual([hamraId]);       // GET /branches shows only their own
+
+            const res = await request(app).get('/places').set(as(employeeId));
+            expect(res.status, JSON.stringify(res.body)).toBe(200);
+            expect(res.body[0].kind).toBe('warehouse');
+            expect(res.body.map((p: { id: string }) => p.id)).toEqual(expect.arrayContaining([warehouseId, hamraId, tripoliId]));
+            expect(Object.keys(res.body[0]).sort()).toEqual(['code', 'id', 'kind', 'name']);
+
+            // with the permission to send, they prepare a transfer FROM their branch TO a place they could not see before
+            await request(app).put(`/users/${employeeId}/permissions`).set(as(adminId)).send({ permissions: { 'transfers.dispatch': true } });
+            const sku = await newSku((await newStyle()).id);
+            await open(sku.id, hamraId, 5);
+            const sent = await request(app).post('/transfers').set(as(employeeId)).set('Idempotency-Key', key()).send({ sourceBranchId: hamraId, destinationBranchId: tripoliId, lines: [{ skuId: sku.id, quantity: 2 }] });
+            expect(sent.status, JSON.stringify(sent.body)).toBe(201);
+
+            const inactive = (await request(app).post('/branches').set(as(adminId)).send({ code: `PLI-${stamp}`, name: 'Closed place' })).body.id;
+            await request(app).patch(`/branches/${inactive}`).set(as(adminId)).send({ isActive: false });
+            expect((await request(app).get('/places').set(as(adminId))).body.map((p: { id: string }) => p.id)).not.toContain(inactive);
+            expect((await request(app).get('/places')).status).toBe(401);
+        });
+
+        it('someone with neither permission gets 403', async () => {
+            const nobody = await make('plcno', UserRole.EMPLOYEE);
+            await request(app).put(`/users/${nobody}/permissions`).set(as(adminId)).send({ permissions: { 'transfers.receive': false } });
+            expect((await request(app).get('/places').set(as(nobody))).status).toBe(403);
         });
     });
 
