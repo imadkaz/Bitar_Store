@@ -8,6 +8,7 @@ import {
 import { boolParam, intParam, textParam } from './query';
 import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adjustments/AdjustmentUsecases';
 import { AdjustmentView } from '../repositories/interfaces/IAdjustmentRepository';
+import { CreateGoodsReceiptUsecase, GetGoodsReceiptUsecase, ListGoodsReceiptsUsecase } from '../usecases/goodsreceipts/GoodsReceiptUsecases';
 
 export class CategoryController {
     constructor(
@@ -103,4 +104,25 @@ export class AdjustmentController {
 export class PlacesController {
     constructor(private readonly places: ListPlacesUsecase) {}
     list = async (req: Request, res: Response) => { res.status(200).json(await this.places.execute(getAuth(req))); };
+}
+
+export class GoodsReceiptController {
+    constructor(private readonly create: CreateGoodsReceiptUsecase, private readonly get: GetGoodsReceiptUsecase, private readonly list: ListGoodsReceiptsUsecase) {}
+
+    createReceipt = async (req: Request, res: Response) => {
+        const result = await this.create.execute(req.body, req.header('idempotency-key'), getAuth(req));
+        if (result.replayed) res.setHeader('Idempotent-Replay', 'true');
+        res.status(201).json(result.receipt);
+    };
+
+    getReceipt = async (req: Request, res: Response) => { res.status(200).json(await this.get.execute(req.params.id as string, getAuth(req))); };
+
+    listReceipts = async (req: Request, res: Response) => {
+        const { items, total } = await this.list.execute(
+            { supplier: textParam(req, 'supplier'), invoiceNumber: textParam(req, 'invoiceNumber'), skuId: textParam(req, 'skuId'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
+            getAuth(req),
+        );
+        res.setHeader('X-Total-Count', String(total));
+        res.status(200).json(items);
+    };
 }

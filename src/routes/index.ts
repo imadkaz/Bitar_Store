@@ -72,16 +72,19 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { AdjustmentController, CategoryController, DeletionController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
 import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, ListPlacesUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
 import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
 import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adjustments/AdjustmentUsecases';
+import { GoodsReceiptRepository } from '../repositories/GoodsReceiptRepository';
+import { GoodsReceiptUnitOfWork } from '../repositories/GoodsReceiptUnitOfWork';
+import { CreateGoodsReceiptUsecase, GetGoodsReceiptUsecase, ListGoodsReceiptsUsecase } from '../usecases/goodsreceipts/GoodsReceiptUsecases';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -109,6 +112,8 @@ const auditRepository = new AuditRepository(prisma);
 const managementRepository = new ManagementRepository(prisma);
 const adjustmentRepository = new AdjustmentRepository(prisma);
 const adjustmentUnitOfWork = new AdjustmentUnitOfWork(prisma);
+const goodsReceiptRepository = new GoodsReceiptRepository(prisma);
+const goodsReceiptUnitOfWork = new GoodsReceiptUnitOfWork(prisma);
 
 const authenticate = createAuthenticate(
     new GetAuthContextUsecase(userRepository, userAccessRepository),
@@ -205,6 +210,12 @@ const adjustmentController = new AdjustmentController(
     new ListAdjustmentsUsecase(branchRepository, adjustmentRepository),
 );
 
+const goodsReceiptController = new GoodsReceiptController(
+    new CreateGoodsReceiptUsecase(locationRepository, goodsReceiptUnitOfWork, goodsReceiptRepository),
+    new GetGoodsReceiptUsecase(locationRepository, goodsReceiptRepository),
+    new ListGoodsReceiptsUsecase(locationRepository, goodsReceiptRepository),
+);
+
 // ---- transfers
 const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
@@ -271,6 +282,7 @@ routes.use('/barcodes', BarcodeRoutes(skuController, authenticate));
 routes.use('/auth', AuthRoutes(authController, authenticate));
 
 routes.use('/stock/adjustments', AdjustmentRoutes(adjustmentController, authenticate));
+routes.use('/goods-receipts', GoodsReceiptRoutes(goodsReceiptController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));
 

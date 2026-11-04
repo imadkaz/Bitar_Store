@@ -57,6 +57,7 @@ describe.skipIf(!disposable)('stock adjustments (real database)', () => {
         const all = await request(app).get('/branches').set(as(adminId));
         warehouseId = all.body.find((b: { kind: string }) => b.kind === 'warehouse')?.id;
         if (!warehouseId) warehouseId = (await request(app).post('/branches').set(as(adminId)).send({ code: `AJW-${stamp}`, name: 'Main Warehouse (test)', kind: 'warehouse' })).body.id;
+        await request(app).patch(`/branches/${warehouseId}`).set(as(adminId)).send({ isActive: true });   // an earlier test may have left the one and only warehouse inactive
         styleId = (await request(app).post('/styles').set(as(adminId)).send({ code: `AJS${stamp}`, name: 'Adjustment Test' })).body.id;
     }, 120_000);
 
