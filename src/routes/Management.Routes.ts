@@ -1,5 +1,5 @@
 import { RequestHandler, Router } from 'express';
-import { AdjustmentController, CategoryController, DeletionController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { AdjustmentController, CategoryController, DeletionController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { asyncHandler } from '../middlewares/asyncHandler';
 
 // Each of these routers is mounted BEFORE the existing one on the same prefix and answers only what is new (a DELETE, /history):
@@ -38,3 +38,5 @@ export const AdjustmentRoutes = (controller: AdjustmentController, authenticate:
     Router()
         .get('/', authenticate, asyncHandler(controller.listAdjustments))
         .post('/', authenticate, asyncHandler(controller.createAdjustment));
+
+export const PlacesRoutes = (controller: PlacesController, authenticate: RequestHandler): Router => Router().get('/', authenticate, asyncHandler(controller.list));

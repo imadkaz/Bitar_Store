@@ -3,6 +3,7 @@ import { normalizeCategoryName } from '../../models/Category.model';
 import { Permission, PERMISSIONS, ROLE_PERMISSIONS } from '../../models/Permission';
 import { computeOverrides, describeAccess, GRANTABLE_PERMISSIONS, PERMISSION_INFO, PermissionLine } from '../../models/PermissionCatalog';
 import { UserRole } from '../../models/User.model';
+import { IBranchRepository } from '../../repositories/interfaces/IBranchRepository';
 import { ILocationRepository } from '../../repositories/interfaces/ILocationRepository';
 import { CategoryView, ManagementRepository } from '../../repositories/ManagementRepository';
 import { ConflictError } from '../../utils/exeptions/ConflictError';
@@ -222,5 +223,16 @@ export class SetBranchAccessUsecase {
         await this.repo.setAllBranches(id, mode === 'all', auth.user.getId());
         const after = (await this.repo.findPermissionTarget(id))!;
         return { userId: id, mode: after.allBranches ? 'all' : 'selected', branchIds: after.branchIds };
+    }
+}
+export class ListPlacesUsecase {
+    constructor(private readonly branches: IBranchRepository) {}
+
+    async execute(auth: AuthContext): Promise<{ id: string; code: string; name: string; kind: string }[]> {
+        if (!auth.can('transfers.dispatch') && !auth.can('transfers.receive')) throw new ForbiddenError('Missing permission: transfers.dispatch');
+        return (await this.branches.list())
+            .filter((b) => b.isActive())
+            .map((b) => ({ id: b.getId(), code: b.getCode(), name: b.getName(), kind: b.getKind() as string }))
+            .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'warehouse' ? -1 : 1));      // the warehouse first
     }
 }
