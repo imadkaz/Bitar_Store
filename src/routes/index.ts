@@ -72,12 +72,12 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { AdjustmentController, CategoryController, DeletionController, PermissionController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { AdjustmentController, CategoryController, DeletionController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
-import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase } from '../usecases/management/ManagementUsecases';
+import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, ListPlacesUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, PermissionRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
 import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
@@ -240,6 +240,10 @@ const warehouseController = new WarehouseController(
     new GetWarehouseUsecase(locationRepository),
 );
 
+const placesController = new PlacesController(
+    new ListPlacesUsecase(branchRepository),
+);
+
 const deleteRoutes = DeleteRoutes(deleteController, authenticate);
 const permissionRoutes = PermissionRoutes(permissionController, authenticate);
 
@@ -280,3 +284,4 @@ routes.use('/reports', ReportRoutes(reportController, authenticate));
 routes.use('/audit-events', AuditRoutes(auditController, authenticate));
 routes.use('/transfers', TransferRoutes(transferController, authenticate));
 routes.use('/warehouse', WarehouseRoutes(warehouseController, authenticate));
+routes.use('/places', PlacesRoutes(placesController, authenticate));

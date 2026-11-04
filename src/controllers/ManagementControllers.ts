@@ -3,6 +3,7 @@ import { getAuth } from '../middlewares/Authenticate';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
 import {
     CreateCategoryUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, DeleteBranchUsecase, DeleteCategoryUsecase, DeleteSkuUsecase, DeleteStyleUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, ListCategoriesUsecase, UpdateCategoryUsecase,
+    ListPlacesUsecase,
 } from '../usecases/management/ManagementUsecases';
 import { boolParam, intParam, textParam } from './query';
 import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adjustments/AdjustmentUsecases';
@@ -98,4 +99,8 @@ export class AdjustmentController {
         res.setHeader('X-Total-Count', String(total));
         res.status(200).json(items.map(toAdjustmentResponse));
     };
+}
+export class PlacesController {
+    constructor(private readonly places: ListPlacesUsecase) {}
+    list = async (req: Request, res: Response) => { res.status(200).json(await this.places.execute(getAuth(req))); };
 }
