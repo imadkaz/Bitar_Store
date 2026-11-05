@@ -1,5 +1,5 @@
 import { RequestHandler, Router } from 'express';
-import { AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { asyncHandler } from '../middlewares/asyncHandler';
 
 // Each of these routers is mounted BEFORE the existing one on the same prefix and answers only what is new (a DELETE, /history):
@@ -46,3 +46,15 @@ export const GoodsReceiptRoutes = (controller: GoodsReceiptController, authentic
         .get('/', authenticate, asyncHandler(controller.listReceipts))
         .post('/', authenticate, asyncHandler(controller.createReceipt))
         .get('/:id', authenticate, asyncHandler(controller.getReceipt));
+
+
+export const InvoiceRoutes = (controller: InvoiceController, authenticate: RequestHandler): Router =>
+    Router()
+        .get('/', authenticate, asyncHandler(controller.listInvoices))
+        .post('/', authenticate, asyncHandler(controller.createInvoice))
+        .get('/:id/pdf', authenticate, asyncHandler(controller.invoicePdf))
+        .post('/:id/finalize', authenticate, asyncHandler(controller.finalizeInvoice))
+        .post('/:id/void', authenticate, asyncHandler(controller.voidInvoiceById))
+        .get('/:id', authenticate, asyncHandler(controller.getInvoice))
+        .patch('/:id', authenticate, asyncHandler(controller.updateInvoice))
+        .delete('/:id', authenticate, asyncHandler(controller.deleteInvoice));

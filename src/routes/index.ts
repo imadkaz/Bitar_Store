@@ -72,12 +72,12 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
 import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, ListPlacesUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, InvoiceRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
 import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
@@ -85,6 +85,9 @@ import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adj
 import { GoodsReceiptRepository } from '../repositories/GoodsReceiptRepository';
 import { GoodsReceiptUnitOfWork } from '../repositories/GoodsReceiptUnitOfWork';
 import { CreateGoodsReceiptUsecase, GetGoodsReceiptUsecase, ListGoodsReceiptsUsecase } from '../usecases/goodsreceipts/GoodsReceiptUsecases';
+import { InvoiceWriter } from '../repositories/InvoiceWriter';
+import { InvoiceRepository } from '../repositories/InvoiceRepository';
+import { GetInvoiceUsecase, CreateInvoiceUsecase, ListInvoicesUsecase, UpdateInvoiceUsecase, FinalizeInvoiceUsecase, VoidInvoiceUsecase, DeleteInvoiceUsecase, GetInvoicePdfUsecase } from '../usecases/invoices/InvoiceUsecases';
 
 // Composition root: the only place that creates repositories -> use cases -> controllers -> routes.
 export const routes = Router();
@@ -114,6 +117,8 @@ const adjustmentRepository = new AdjustmentRepository(prisma);
 const adjustmentUnitOfWork = new AdjustmentUnitOfWork(prisma);
 const goodsReceiptRepository = new GoodsReceiptRepository(prisma);
 const goodsReceiptUnitOfWork = new GoodsReceiptUnitOfWork(prisma);
+const invoiceRepository = new InvoiceRepository(prisma);
+const invoiceWriter = new InvoiceWriter(prisma);
 
 const authenticate = createAuthenticate(
     new GetAuthContextUsecase(userRepository, userAccessRepository),
@@ -216,6 +221,18 @@ const goodsReceiptController = new GoodsReceiptController(
     new ListGoodsReceiptsUsecase(locationRepository, goodsReceiptRepository),
 );
 
+const getInvoiceUsecase = new GetInvoiceUsecase(invoiceRepository);
+const invoiceController = new InvoiceController(
+    new CreateInvoiceUsecase(invoiceWriter, invoiceRepository),
+    getInvoiceUsecase,
+    new ListInvoicesUsecase(invoiceRepository),
+    new UpdateInvoiceUsecase(invoiceWriter, invoiceRepository),
+    new FinalizeInvoiceUsecase(invoiceWriter, invoiceRepository),
+    new VoidInvoiceUsecase(invoiceWriter, invoiceRepository),
+    new DeleteInvoiceUsecase(invoiceWriter),
+    new GetInvoicePdfUsecase(getInvoiceUsecase),
+);
+
 // ---- transfers
 const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
@@ -283,6 +300,7 @@ routes.use('/auth', AuthRoutes(authController, authenticate));
 
 routes.use('/stock/adjustments', AdjustmentRoutes(adjustmentController, authenticate));
 routes.use('/goods-receipts', GoodsReceiptRoutes(goodsReceiptController, authenticate));
+routes.use('/invoices', InvoiceRoutes(invoiceController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));
 
