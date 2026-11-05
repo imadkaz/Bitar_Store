@@ -72,14 +72,26 @@ describe('Transfer: dispatch', () => {
 describe('Transfer: receiving', () => {
     const sent = () => { const t = draft(); t.dispatch(); return t; };
 
-    it('good pieces go on sale at the destination, damaged ones to hold, and what arrived leaves the road', () => {
+    it('good pieces go on hold at the destination, damaged ones to hold, and what arrived leaves the road', () => {
         const t = sent();
         const moves = t.receive([{ skuId: DRESS, accepted: 8, damaged: 1 }]);
         expect(sum(moves, HAMRA, 'in_transit')).toBe(-9);
-        expect(sum(moves, HAMRA, 'sellable')).toBe(8);
-        expect(sum(moves, HAMRA, 'non_sellable')).toBe(1);
+        expect(sum(moves, HAMRA, 'sellable')).toBe(0);
+        expect(sum(moves, HAMRA, 'non_sellable')).toBe(9);
         expect(line(t, DRESS).receivedQty).toBe(9);
+        expect(line(t, DRESS).damagedQty).toBe(1);
+        expect(t.pendingRelease(line(t, DRESS))).toBe(8);
         expect(t.getStatus()).toBe('partially_received');        // 1 dress and the caps are still out
+    });
+
+    it('after inspection, good received units move to sellable', () => {
+        const t = sent();
+        t.receive([{ skuId: DRESS, accepted: 8, damaged: 1 }]);
+        const moves = t.acceptToSellable([{ skuId: DRESS, quantity: 8 }]);
+        expect(sum(moves, HAMRA, 'non_sellable')).toBe(-8);
+        expect(sum(moves, HAMRA, 'sellable')).toBe(8);
+        expect(line(t, DRESS).releasedQty).toBe(8);
+        expect(t.pendingRelease(line(t, DRESS))).toBe(0);
     });
 
     it('everything arrives (maybe in two rounds): received', () => {

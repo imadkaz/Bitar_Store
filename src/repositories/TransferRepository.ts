@@ -30,8 +30,14 @@ export class TransferRepository implements ITransferRepository {
                 .sort((a, b) => a.sku.skuCode.localeCompare(b.sku.skuCode))
                 .map(({ line, sku }) => ({
                     skuId: line.skuId, skuCode: sku.skuCode, styleName: sku.style.name, size: sku.size, color: sku.color,
-                    requestedQty: line.requestedQty, dispatchedQty: line.dispatchedQty, receivedQty: line.receivedQty, resolvedQty: line.resolvedQty,
+                    requestedQty: line.requestedQty,
+                    dispatchedQty: line.dispatchedQty,
+                    receivedQty: line.receivedQty,
+                    damagedQty: line.damagedQty,
+                    releasedQty: line.releasedQty,
+                    resolvedQty: line.resolvedQty,
                     outstandingQty: line.dispatchedQty - line.receivedQty - line.resolvedQty,
+                    onHoldQty: Math.max(0, line.receivedQty - line.damagedQty - line.releasedQty),
                 })),
         }));
     }

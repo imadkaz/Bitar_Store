@@ -21,7 +21,7 @@ interface StoredTransfer {
     requestedAt: Date;
     dispatchedBy: string | null;
     dispatchedAt: Date | null;
-    lines: { skuId: string; requestedQty: number; dispatchedQty: number; receivedQty: number; resolvedQty: number }[];
+    lines: { skuId: string; requestedQty: number; dispatchedQty: number; receivedQty: number; damagedQty: number; releasedQty: number; resolvedQty: number }[];
 }
 
 export interface TransferLedgerRow { skuId: string; branchId: string; bucket: StockBucket; delta: number; balanceAfter: number; type: string; transferId: string; actorId: string; reason?: string }
@@ -144,7 +144,22 @@ export class FakeTransferRepository implements ITransferRepository {
             requestedBy: who(t.requestedBy), requestedAt: t.requestedAt, dispatchedBy: t.dispatchedBy ? who(t.dispatchedBy) : null, dispatchedAt: t.dispatchedAt,
             lines: t.lines.map((l) => {
                 const sku = this.w.skus.get(l.skuId)!;
-                return { skuId: l.skuId, skuCode: sku.skuCode, styleName: sku.styleName, size: sku.size, color: sku.color, requestedQty: l.requestedQty, dispatchedQty: l.dispatchedQty, receivedQty: l.receivedQty, resolvedQty: l.resolvedQty, outstandingQty: l.dispatchedQty - l.receivedQty - l.resolvedQty };
+                const onHoldQty = Math.max(0, l.receivedQty - l.damagedQty - l.releasedQty);
+                return {
+                    skuId: l.skuId,
+                    skuCode: sku.skuCode,
+                    styleName: sku.styleName,
+                    size: sku.size,
+                    color: sku.color,
+                    requestedQty: l.requestedQty,
+                    dispatchedQty: l.dispatchedQty,
+                    receivedQty: l.receivedQty,
+                    damagedQty: l.damagedQty,
+                    releasedQty: l.releasedQty,
+                    resolvedQty: l.resolvedQty,
+                    outstandingQty: l.dispatchedQty - l.receivedQty - l.resolvedQty,
+                    onHoldQty,
+                };
             }),
         };
     }

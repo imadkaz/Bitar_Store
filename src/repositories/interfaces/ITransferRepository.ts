@@ -16,8 +16,11 @@ export interface TransferLineView {
     requestedQty: number;
     dispatchedQty: number;
     receivedQty: number;
+    damagedQty: number;
+    releasedQty: number;
     resolvedQty: number;
     outstandingQty: number;      // still on the road
+    onHoldQty: number;           // good received, not yet sellable
 }
 
 export interface TransferView {

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { getAuth } from '../middlewares/Authenticate';
-import { CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase, TransferActionResult } from '../usecases/transfer/TransferUsecases';
+import { AcceptTransferUsecase, CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase, TransferActionResult } from '../usecases/transfer/TransferUsecases';
 import { intParam, textParam } from './query';
 import { toTransferResponse } from './responses';
 
@@ -9,6 +9,7 @@ export class TransferController {
         private readonly createTransfer: CreateTransferUsecase,
         private readonly dispatchTransfer: DispatchTransferUsecase,
         private readonly receiveTransfer: ReceiveTransferUsecase,
+        private readonly acceptTransfer: AcceptTransferUsecase,
         private readonly resolveTransfer: ResolveTransferUsecase,
         private readonly cancelTransfer: CancelTransferUsecase,
         private readonly getTransfer: GetTransferUsecase,
@@ -24,6 +25,7 @@ export class TransferController {
     create = async (req: Request, res: Response) => this.answer(res, await this.createTransfer.execute(req.body, req.header('idempotency-key'), getAuth(req)), 201);
     dispatch = async (req: Request, res: Response) => this.answer(res, await this.dispatchTransfer.execute(req.params.id as string, req.body, req.header('idempotency-key'), getAuth(req)));
     receive = async (req: Request, res: Response) => this.answer(res, await this.receiveTransfer.execute(req.params.id as string, req.body, req.header('idempotency-key'), getAuth(req)));
+    accept = async (req: Request, res: Response) => this.answer(res, await this.acceptTransfer.execute(req.params.id as string, req.body, req.header('idempotency-key'), getAuth(req)));
     resolve = async (req: Request, res: Response) => this.answer(res, await this.resolveTransfer.execute(req.params.id as string, req.body, req.header('idempotency-key'), getAuth(req)));
     cancel = async (req: Request, res: Response) => {
         res.status(200).json(toTransferResponse(await this.cancelTransfer.execute(req.params.id as string, getAuth(req))));

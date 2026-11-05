@@ -29,10 +29,15 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
         'transfers.dispatch', 'returns.create', 'adjustments.create', 'reports.financial',
     ],
     [UserRole.ADMIN]: [...PERMISSIONS],
+    [UserRole.SUPER_ADMIN]: [...PERMISSIONS],
+    [UserRole.Business_MANAGER]: [
+        'sales.create', 'transfers.receive', 'discounts.apply', 'catalog.create',
+        'transfers.dispatch', 'returns.create', 'adjustments.create', 'reports.financial',
+    ],
 };
 
 export function canViewCosts(role: UserRole): boolean {
-    return role === UserRole.ADMIN || role === UserRole.MANAGER;
+    return role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN || role === UserRole.MANAGER || role === UserRole.Business_MANAGER;
 }
 
 // Role defaults first, then the individual overrides on top (allow adds, deny removes).

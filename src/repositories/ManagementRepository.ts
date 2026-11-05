@@ -114,19 +114,95 @@ export class ManagementRepository {
         }
     }
 
+    /** Permanently removes records attached to a branch as part of an explicit admin deletion. */
+    private async purgeBranchData(tx: Prisma.TransactionClient, branchId: string): Promise<void> {
+        const transfers = await tx.transfer.findMany({
+            where: { OR: [{ sourceBranchId: branchId }, { destinationBranchId: branchId }] },
+            select: { id: true },
+        });
+        if (transfers.length > 0) {
+            throw new ConflictError('This branch has transfer history involving another branch; deactivate it instead (isActive: false)');
+        }
+
+        await tx.$executeRaw`SET LOCAL app.allow_branch_history_purge = 'on'`;
+
+        const sales = await tx.sale.findMany({ where: { branchId }, select: { id: true, idempotencyKeyId: true } });
+        const saleIds = sales.map((row) => row.id);
+        const adjustments = await tx.adjustment.findMany({ where: { branchId }, select: { id: true, idempotencyKeyId: true } });
+        const adjustmentIds = adjustments.map((row) => row.id);
+        const receipts = await tx.goodsReceipt.findMany({ where: { branchId }, select: { id: true, idempotencyKeyId: true } });
+        const receiptIds = receipts.map((row) => row.id);
+
+        const invoiceWhere: Prisma.InvoiceWhereInput[] = [{ issuerBranchId: branchId }, { recipientBranchId: branchId }];
+        if (saleIds.length > 0) invoiceWhere.push({ saleId: { in: saleIds } });
+        const invoices = await tx.invoice.findMany({ where: { OR: invoiceWhere }, select: { id: true } });
+        const invoiceIds = invoices.map((row) => row.id);
+
+        const movementWhere: Prisma.StockMovementWhereInput[] = [{ branchId }];
+        if (saleIds.length > 0) movementWhere.push({ saleId: { in: saleIds } });
+        if (adjustmentIds.length > 0) movementWhere.push({ adjustmentId: { in: adjustmentIds } });
+        if (receiptIds.length > 0) movementWhere.push({ goodsReceiptId: { in: receiptIds } });
+        const movements = await tx.stockMovement.findMany({ where: { OR: movementWhere }, select: { idempotencyKeyId: true } });
+        await tx.stockMovement.deleteMany({ where: { OR: movementWhere } });
+
+        if (invoiceIds.length > 0) {
+            await tx.invoiceLine.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
+            await tx.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
+        }
+        if (saleIds.length > 0) {
+            await tx.salePayment.deleteMany({ where: { saleId: { in: saleIds } } });
+            await tx.$executeRaw(Prisma.sql`
+                DELETE FROM sale_line_costs
+                WHERE sale_line_id IN (SELECT id FROM sale_lines WHERE sale_id IN (${Prisma.join(saleIds)}))
+            `);
+            await tx.saleLine.deleteMany({ where: { saleId: { in: saleIds } } });
+            await tx.sale.deleteMany({ where: { id: { in: saleIds } } });
+        }
+        if (adjustmentIds.length > 0) await tx.adjustment.deleteMany({ where: { id: { in: adjustmentIds } } });
+        if (receiptIds.length > 0) {
+            await tx.goodsReceiptLine.deleteMany({ where: { receiptId: { in: receiptIds } } });
+            await tx.goodsReceipt.deleteMany({ where: { id: { in: receiptIds } } });
+        }
+
+        await tx.stockAlert.deleteMany({ where: { branchId } });
+        await tx.stockBalance.deleteMany({ where: { branchId } });
+        await tx.$executeRaw`DELETE FROM stock_costs WHERE branch_id = ${branchId}::uuid`;
+        await tx.reorderLevel.deleteMany({ where: { branchId } });
+        await tx.userBranchAccess.deleteMany({ where: { branchId } });
+        const auditWhere: Prisma.AuditEventWhereInput[] = [
+            { branchId },
+            { entityType: 'branch', entityId: branchId },
+        ];
+        if (saleIds.length > 0) auditWhere.push({ entityType: 'sale', entityId: { in: saleIds } });
+        if (adjustmentIds.length > 0) auditWhere.push({ entityType: 'adjustment', entityId: { in: adjustmentIds } });
+        if (receiptIds.length > 0) auditWhere.push({ entityType: 'goods_receipt', entityId: { in: receiptIds } });
+        if (invoiceIds.length > 0) auditWhere.push({ entityType: 'invoice', entityId: { in: invoiceIds } });
+        await tx.auditEvent.deleteMany({ where: { OR: auditWhere } });
+
+        const idempotencyIds = [
+            ...sales.map((row) => row.idempotencyKeyId),
+            ...adjustments.map((row) => row.idempotencyKeyId),
+            ...receipts.map((row) => row.idempotencyKeyId),
+            ...movements.map((row) => row.idempotencyKeyId),
+        ];
+        const uniqueIdempotencyIds = [...new Set(idempotencyIds)];
+        if (uniqueIdempotencyIds.length > 0) await tx.idempotencyKey.deleteMany({ where: { id: { in: uniqueIdempotencyIds } } });
+
+        await tx.$executeRaw`SET LOCAL app.allow_branch_history_purge = 'off'`;
+    }
+
     // ---- branches
     async deleteBranch(id: string, actorId: string): Promise<void> {
         try {
             await this.prisma.$transaction(async (tx) => {
                 const branch = await tx.branch.findUnique({ where: { id } });
                 if (!branch) throw new NotFoundError('Branch not found');
-                await tx.userBranchAccess.deleteMany({ where: { branchId: id } });
-                await tx.reorderLevel.deleteMany({ where: { branchId: id } });
+                await this.purgeBranchData(tx, id);
                 await tx.branch.delete({ where: { id } });
-                await writeAudit(tx, { actorId, action: 'branch.delete', entityType: 'branch', entityId: id, details: { code: branch.code, kind: branch.kind } });
+                await writeAudit(tx, { actorId, action: 'branch.delete', entityType: 'branch', entityId: id, details: { code: branch.code, kind: branch.kind, purgedHistory: true } });
             }, TX);
         } catch (error) {
-            if (isCode(error, 'P2003')) throw new ConflictError('This place has history (sales, stock, transfers or recorded changes): deactivate it instead (isActive: false)');
+            if (isCode(error, 'P2003')) throw new ConflictError('This branch still has linked records and could not be deleted');
             throw error;
         }
     }

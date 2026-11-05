@@ -13,7 +13,7 @@ import { isUuid } from '../../utils/uuid';
 import { resolvePaging } from '../styles/paging';
 import { parseOptionalUuid } from '../insight/scope';
 import { parseIdempotencyKey } from '../sales/saleRequest';
-import { hashOf, parseCreateTransfer, parseDispatchBody, parseReceiveBody, parseResolveBody } from './transferRequest';
+import { hashOf, parseAcceptBody, parseCreateTransfer, parseDispatchBody, parseReceiveBody, parseResolveBody } from './transferRequest';
 
 export interface TransferActionResult {
     transfer: TransferView;
@@ -147,7 +147,7 @@ export class DispatchTransferUsecase extends TransferStepUsecase {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The destination says what arrived: good pieces go on sale, damaged ones to hold. It can be done in several rounds.
+// The destination says what arrived: good pieces go on hold for inspection, damaged ones to hold. It can be done in several rounds.
 export class ReceiveTransferUsecase extends TransferStepUsecase {
     async execute(rawId: string, body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): Promise<TransferActionResult> {
         const actorId = auth.user.getId();
@@ -171,6 +171,37 @@ export class ReceiveTransferUsecase extends TransferStepUsecase {
             await tx.saveTransfer(transfer, actorId);
             const damaged = items.reduce((s, i) => s + (i.damaged ?? 0), 0);
             await tx.audit({ actorId, action: 'transfer.receive', entityType: 'transfer', entityId: id, branchId: transfer.destinationBranchId, details: { accepted: items.reduce((s, i) => s + i.accepted, 0), damaged, status: transfer.getStatus() } });
+            await tx.completeIdempotencyKey(claim.keyId, 'transfer', id);
+        });
+        return this.reload(id, replayed);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// After inspection, the destination releases good received units to the sellable shelf.
+export class AcceptTransferUsecase extends TransferStepUsecase {
+    async execute(rawId: string, body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): Promise<TransferActionResult> {
+        const actorId = auth.user.getId();
+        if (!auth.can('transfers.receive')) throw new ForbiddenError('Missing permission: transfers.receive');
+        const id = transferId(rawId);
+        const key = parseIdempotencyKey(idempotencyKeyHeader);
+        const items = parseAcceptBody(body);
+        const hash = hashOf('transfer.accept', id, items);
+
+        let replayed = false;
+        await this.unitOfWork.run(async (tx) => {
+            const claim = await tx.claimIdempotencyKey(actorId, 'transfer.accept', key, hash);
+            if (claim.kind === 'replay') { replayed = true; return; }
+            if (claim.kind === 'different_request') throw new ConflictError('This Idempotency-Key was already used for a different request');
+            if (claim.kind === 'in_progress') throw new ConflictError('This request is already being processed');
+
+            const transfer = await lockedTransferFor(tx, id, auth);
+            if (!auth.canAccessBranch(transfer.destinationBranchId)) throw new ForbiddenError('Only the receiving place can accept stock for sale');
+            const moves = transfer.acceptToSellable(items);
+            await tx.applyMoves(id, moves, actorId, claim.keyId);
+            await tx.saveTransfer(transfer, actorId);
+            const released = items.reduce((s, i) => s + i.quantity, 0);
+            await tx.audit({ actorId, action: 'transfer.accept', entityType: 'transfer', entityId: id, branchId: transfer.destinationBranchId, details: { released, status: transfer.getStatus() } });
             await tx.completeIdempotencyKey(claim.keyId, 'transfer', id);
         });
         return this.reload(id, replayed);

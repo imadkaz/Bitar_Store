@@ -220,8 +220,24 @@ export function toTransferResponse(t: TransferView) {
         dispatchedAt: t.dispatchedAt,
         lines: t.lines.map((l) => ({
             sku: { id: l.skuId, code: l.skuCode, styleName: l.styleName, size: l.size, color: l.color },
-            requested: l.requestedQty, dispatched: l.dispatchedQty, received: l.receivedQty, lost: l.resolvedQty, onTheRoad: l.outstandingQty,
+            requested: l.requestedQty,
+            dispatched: l.dispatchedQty,
+            received: l.receivedQty,
+            damaged: l.damagedQty,
+            releasedToSellable: l.releasedQty,
+            onHold: l.onHoldQty,
+            lost: l.resolvedQty,
+            onTheRoad: l.outstandingQty,
         })),
-        totals: { requested: sum((l) => l.requestedQty), dispatched: sum((l) => l.dispatchedQty), received: sum((l) => l.receivedQty), lost: sum((l) => l.resolvedQty), onTheRoad: sum((l) => l.outstandingQty) },
+        totals: {
+            requested: sum((l) => l.requestedQty),
+            dispatched: sum((l) => l.dispatchedQty),
+            received: sum((l) => l.receivedQty),
+            damaged: sum((l) => l.damagedQty),
+            releasedToSellable: sum((l) => l.releasedQty),
+            onHold: sum((l) => l.onHoldQty),
+            lost: sum((l) => l.resolvedQty),
+            onTheRoad: sum((l) => l.outstandingQty),
+        },
     };
 }

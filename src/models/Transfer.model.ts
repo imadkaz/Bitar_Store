@@ -14,7 +14,7 @@ export interface StockMove {
     branchId: string;
     bucket: StockBucket;
     delta: number;
-    type: 'transfer_dispatch' | 'transfer_receipt' | 'transfer_resolution';
+    type: 'transfer_dispatch' | 'transfer_receipt' | 'transfer_release' | 'transfer_resolution';
     reason?: string;
 }
 
@@ -23,6 +23,8 @@ export interface TransferLineState {
     requestedQty: number;
     dispatchedQty: number;
     receivedQty: number;      // arrived at the destination, good or damaged
+    damagedQty: number;       // subset of received, kept on hold as damaged
+    releasedQty: number;      // good received units already moved to sellable
     resolvedQty: number;      // confirmed lost
 }
 
@@ -75,7 +77,15 @@ export class Transfer {
             note = props.note.trim() === '' ? null : props.note.trim();
             if (note !== null && note.length > 500) throw new ValidationError('Note must be at most 500 characters');
         }
-        const lines = props.lines.map((l) => ({ skuId: l.skuId, requestedQty: whole(l.quantity, 1, MAX_TRANSFER_QUANTITY, 'Quantity'), dispatchedQty: 0, receivedQty: 0, resolvedQty: 0 }));
+        const lines = props.lines.map((l) => ({
+            skuId: l.skuId,
+            requestedQty: whole(l.quantity, 1, MAX_TRANSFER_QUANTITY, 'Quantity'),
+            dispatchedQty: 0,
+            receivedQty: 0,
+            damagedQty: 0,
+            releasedQty: 0,
+            resolvedQty: 0,
+        }));
 
         return new Transfer(
             props.id, 
@@ -98,6 +108,9 @@ export class Transfer {
     getLines(): readonly TransferLineState[] { return this.lines; }
     outstanding(line: TransferLineState): number { return line.dispatchedQty - line.receivedQty - line.resolvedQty; }
     totalOutstanding(): number { return this.lines.reduce((sum, l) => sum + this.outstanding(l), 0); }
+    /** Good units received but not yet released to the sellable shelf. */
+    pendingRelease(line: TransferLineState): number { return line.receivedQty - line.damagedQty - line.releasedQty; }
+    totalPendingRelease(): number { return this.lines.reduce((sum, l) => sum + this.pendingRelease(l), 0); }
 
     private lineOf(skuId: string): TransferLineState {
         const line = this.lines.find((l) => l.skuId === skuId);
@@ -145,7 +158,7 @@ export class Transfer {
         return moves;
     }
 
-    // The destination says what arrived: good pieces go on sale, damaged ones to hold. It can be done in several rounds.
+    // The destination says what arrived: good pieces go on hold for inspection, damaged ones stay on hold. It can be done in several rounds.
     receive(items: { skuId: string; accepted: number; damaged?: number }[]): StockMove[] {
         if (this.status !== 'dispatched' && this.status !== 'partially_received') throw new ConflictError('Only a transfer on the road can be received');
         if (items.length < 1) throw new ValidationError('Say what arrived');
@@ -159,11 +172,41 @@ export class Transfer {
             if (arrived < 1) throw new ValidationError('Each line must say how many arrived (accepted or damaged)');
             if (arrived > this.outstanding(line)) throw new ConflictError(`Only ${this.outstanding(line)} are still on the way for this sku`);
             line.receivedQty += arrived;
+            line.damagedQty += damaged;
             moves.push({ skuId: line.skuId, branchId: this.destinationBranchId, bucket: 'in_transit', delta: -arrived, type: 'transfer_receipt' });
-            if (accepted > 0) moves.push({ skuId: line.skuId, branchId: this.destinationBranchId, bucket: 'sellable', delta: accepted, type: 'transfer_receipt' });
+            if (accepted > 0) {
+                moves.push({
+                    skuId: line.skuId,
+                    branchId: this.destinationBranchId,
+                    bucket: 'non_sellable',
+                    delta: accepted,
+                    type: 'transfer_receipt',
+                    reason: 'received pending inspection',
+                });
+            }
             if (damaged > 0) moves.push({ skuId: line.skuId, branchId: this.destinationBranchId, bucket: 'non_sellable', delta: damaged, type: 'transfer_receipt', reason: 'damaged on arrival' });
         }
         this.recomputeStatus();
+        return moves;
+    }
+
+    // After inspection, good received units move from hold to the sellable shelf.
+    acceptToSellable(items: { skuId: string; quantity: number }[]): StockMove[] {
+        if (this.status !== 'partially_received' && this.status !== 'received' && this.status !== 'closed') {
+            throw new ConflictError('Nothing has been received yet on this transfer');
+        }
+        if (items.length < 1) throw new ValidationError('Say what to release for sale');
+        Transfer.uniqueSkus(items);
+        const moves: StockMove[] = [];
+        for (const item of items) {
+            const line = this.lineOf(item.skuId);
+            const quantity = whole(item.quantity, 1, MAX_TRANSFER_QUANTITY, 'Quantity to release');
+            const pending = this.pendingRelease(line);
+            if (quantity > pending) throw new ConflictError(`Only ${pending} good units are still on hold for this sku`);
+            line.releasedQty += quantity;
+            moves.push({ skuId: line.skuId, branchId: this.destinationBranchId, bucket: 'non_sellable', delta: -quantity, type: 'transfer_release' });
+            moves.push({ skuId: line.skuId, branchId: this.destinationBranchId, bucket: 'sellable', delta: quantity, type: 'transfer_release' });
+        }
         return moves;
     }
 

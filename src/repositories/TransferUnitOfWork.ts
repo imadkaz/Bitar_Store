@@ -50,7 +50,15 @@ class PrismaTransferTransaction implements TransferTransaction {
         return Transfer.restore({
             id: row.id, reference: row.reference, sourceBranchId: row.sourceBranchId, destinationBranchId: row.destinationBranchId, status: row.status as TransferStatus,
             note: row.note, requestedBy: row.requestedBy,
-            lines: row.lines.map((l) => ({ skuId: l.skuId, requestedQty: l.requestedQty, dispatchedQty: l.dispatchedQty, receivedQty: l.receivedQty, resolvedQty: l.resolvedQty })),
+            lines: row.lines.map((l) => ({
+                skuId: l.skuId,
+                requestedQty: l.requestedQty,
+                dispatchedQty: l.dispatchedQty,
+                receivedQty: l.receivedQty,
+                damagedQty: l.damagedQty,
+                releasedQty: l.releasedQty,
+                resolvedQty: l.resolvedQty,
+            })),
         });
     }
 
@@ -104,7 +112,13 @@ class PrismaTransferTransaction implements TransferTransaction {
         for (const line of transfer.getLines()) {
             await this.tx.transferLine.update({
                 where: { transferId_skuId: { transferId: transfer.id, skuId: line.skuId } },
-                data: { dispatchedQty: line.dispatchedQty, receivedQty: line.receivedQty, resolvedQty: line.resolvedQty },
+                data: {
+                    dispatchedQty: line.dispatchedQty,
+                    receivedQty: line.receivedQty,
+                    damagedQty: line.damagedQty,
+                    releasedQty: line.releasedQty,
+                    resolvedQty: line.resolvedQty,
+                },
             });
         }
     }

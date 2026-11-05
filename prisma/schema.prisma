@@ -320,6 +320,8 @@ model TransferLine {
   requestedQty  Int      @map("requested_qty")
   dispatchedQty Int      @default(0) @map("dispatched_qty")
   receivedQty   Int      @default(0) @map("received_qty")
+  damagedQty    Int      @default(0) @map("damaged_qty")
+  releasedQty   Int      @default(0) @map("released_qty")
   resolvedQty   Int      @default(0) @map("resolved_qty")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

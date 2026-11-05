@@ -67,7 +67,7 @@ import { GetStockOverviewUsecase, ListStockMovementsUsecase, GetReplenishmentSug
 import { ListReorderLevelsUsecase, SetReorderLevelUsecase, SetReorderLevelForStyleUsecase, DeleteReorderLevelUsecase } from '../usecases/reorder/ReorderLevelUsecases';
 import { StockInsightRoutes, ReorderLevelRoutes, ReplenishmentRoutes, ReportRoutes, AuditRoutes } from './Insight.Routes';
 import { LocationRepository } from '../repositories/LocationRepository';
-import { CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../usecases/transfer/TransferUsecases';
+import { AcceptTransferUsecase, CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../usecases/transfer/TransferUsecases';
 import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
@@ -238,6 +238,7 @@ const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
     new DispatchTransferUsecase(transferUnitOfWork, transferRepository, stockAlertRepository),
     new ReceiveTransferUsecase(transferUnitOfWork, transferRepository),
+    new AcceptTransferUsecase(transferUnitOfWork, transferRepository),
     new ResolveTransferUsecase(transferUnitOfWork, transferRepository),
     new CancelTransferUsecase(transferUnitOfWork, transferRepository),
     new GetTransferUsecase(transferRepository),

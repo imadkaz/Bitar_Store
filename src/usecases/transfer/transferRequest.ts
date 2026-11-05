@@ -59,6 +59,14 @@ export function parseReceiveBody(body: unknown): { skuId: string; accepted: numb
     });
 }
 
+export function parseAcceptBody(body: unknown): { skuId: string; quantity: number }[] {
+    const input = asObject(body);
+    return listOf(input.lines, 'lines', 200).map((raw, i) => {
+        const line = asObject(raw, `Line ${i + 1}`);
+        return { skuId: uuidOf(line.skuId, `Line ${i + 1}: skuId`), quantity: line.quantity as number };
+    });
+}
+
 export function parseResolveBody(body: unknown): { reason: unknown; lines?: { skuId: string; quantity: number }[] } {
     const input = asObject(body);
     return { reason: input.reason, lines: parseDispatchBody({ lines: input.lines }) };

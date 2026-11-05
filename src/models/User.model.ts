@@ -3,8 +3,11 @@ import { ValidationError } from "../utils/exeptions/ValidationError";
 
 export enum UserRole {
     ADMIN = 'admin',
+    SUPER_ADMIN = 'superadmin',
     MANAGER = 'manager',
     EMPLOYEE = 'employee',
+    Business_MANAGER = 'branch_manager',
+
 }
 
 export function normalizeEmail(email: unknown): string {
@@ -48,7 +51,7 @@ export function assertValidPassword(password: unknown): asserts password is stri
 
 function validateRole(role: unknown): UserRole {
     if (!Object.values(UserRole).includes(role as UserRole)) {
-        throw new ValidationError('Role must be one of: admin, manager, employee');
+        throw new ValidationError('Role must be one of: admin, superadmin, manager, branch_manager, employee');
     }
     return role as UserRole;
 }

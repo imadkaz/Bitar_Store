@@ -10,6 +10,7 @@ export const TransferRoutes = (controller: TransferController, authenticate: Req
     route.get('/:id', authenticate, asyncHandler(controller.get));
     route.post('/:id/dispatch', authenticate, requirePermission('transfers.dispatch'), asyncHandler(controller.dispatch));
     route.post('/:id/receive', authenticate, requirePermission('transfers.receive'), asyncHandler(controller.receive));
+    route.post('/:id/accept', authenticate, requirePermission('transfers.receive'), asyncHandler(controller.accept));
     route.post('/:id/resolve', authenticate, requirePermission('transfers.dispatch'), asyncHandler(controller.resolve));
     route.post('/:id/cancel', authenticate, asyncHandler(controller.cancel));       // the sender, or the person who asked
     return route;

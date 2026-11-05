@@ -8,7 +8,7 @@ import { ForbiddenError } from '../../../utils/exeptions/ForbiddenError';
 import { InsufficientStockError } from '../../../utils/exeptions/InsufficientStockError';
 import { NotFoundError } from '../../../utils/exeptions/NotFoundError';
 import { ValidationError } from '../../../utils/exeptions/ValidationError';
-import { CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../TransferUsecases';
+import { AcceptTransferUsecase, CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../TransferUsecases';
 
 describe('transfers between the warehouse and the branches', () => {
     let world: FakeTransferWorld;
@@ -20,6 +20,7 @@ describe('transfers between the warehouse and the branches', () => {
     let create: CreateTransferUsecase;
     let dispatch: DispatchTransferUsecase;
     let receive: ReceiveTransferUsecase;
+    let accept: AcceptTransferUsecase;
     let resolve: ResolveTransferUsecase;
     let cancel: CancelTransferUsecase;
     let get: GetTransferUsecase;
@@ -49,6 +50,7 @@ describe('transfers between the warehouse and the branches', () => {
         create = new CreateTransferUsecase(uow, repo);
         dispatch = new DispatchTransferUsecase(uow, repo, new FakeTransferAlertRepository(world));
         receive = new ReceiveTransferUsecase(uow, repo);
+        accept = new AcceptTransferUsecase(uow, repo);
         resolve = new ResolveTransferUsecase(uow, repo);
         cancel = new CancelTransferUsecase(uow, repo);
         get = new GetTransferUsecase(repo);
@@ -202,15 +204,15 @@ describe('transfers between the warehouse and the branches', () => {
         });
     });
 
-    describe('receiving: good pieces on sale, damaged ones on hold', () => {
-        it('the destination says what arrived; the road empties and the shelf fills', async () => {
+    describe('receiving: good pieces on hold, damaged ones on hold', () => {
+        it('the destination says what arrived; the road empties and stock waits for inspection', async () => {
             const t = await makeSent();
             const { transfer } = await receive.execute(t.id, { lines: [{ skuId: dress.skuId, accepted: 8, damaged: 1 }] }, key(), hamraStaff());   // an employee may receive
             expect(transfer.status).toBe('partially_received');
             expect(world.qty(hamra.id, dress.skuId, 'in_transit')).toBe(1);
-            expect(world.qty(hamra.id, dress.skuId, 'sellable')).toBe(8);
-            expect(world.qty(hamra.id, dress.skuId, 'non_sellable')).toBe(1);
-            expect(lineOf(transfer, dress.skuId)).toMatchObject({ receivedQty: 9, outstandingQty: 1 });
+            expect(world.qty(hamra.id, dress.skuId, 'sellable')).toBe(0);
+            expect(world.qty(hamra.id, dress.skuId, 'non_sellable')).toBe(9);
+            expect(lineOf(transfer, dress.skuId)).toMatchObject({ receivedQty: 9, onHoldQty: 8, outstandingQty: 1 });
             expect(world.ledger.filter((m) => m.type === 'transfer_receipt')).toHaveLength(3);
         });
 
@@ -231,9 +233,9 @@ describe('transfers between the warehouse and the branches', () => {
             const body = { lines: [{ skuId: dress.skuId, accepted: 6 }] };
             await receive.execute(t.id, body, k, me);
             expect((await receive.execute(t.id, body, k, me)).replayed).toBe(true);
-            expect(world.qty(hamra.id, dress.skuId, 'sellable')).toBe(6);
+            expect(world.qty(hamra.id, dress.skuId, 'non_sellable')).toBe(6);
             await expect(receive.execute(t.id, { lines: [{ skuId: dress.skuId, accepted: 5 }] }, key(), hamraManager())).rejects.toThrow('Only 4 are still on the way');
-            expect(world.qty(hamra.id, dress.skuId, 'sellable')).toBe(6);
+            expect(world.qty(hamra.id, dress.skuId, 'non_sellable')).toBe(6);
         });
 
         it('only the receiving place; not a draft; not someone who cannot see it', async () => {
@@ -251,7 +253,24 @@ describe('transfers between the warehouse and the branches', () => {
             const bad: unknown[] = [undefined, {}, { lines: [] }, { lines: 'x' }, { lines: [{ skuId: dress.skuId, accepted: 0 }] }, { lines: [{ skuId: dress.skuId, accepted: -1 }] },
                 { lines: [{ skuId: dress.skuId, accepted: 1.5 }] }, { lines: [{ skuId: randomUUID(), accepted: 1 }] }, { lines: [{ skuId: dress.skuId, accepted: 1 }, { skuId: dress.skuId, accepted: 1 }] }, { lines: [null] }];
             for (const body of bad) await expect(receive.execute(t.id, body, key(), hamraManager()), JSON.stringify(body)).rejects.toBeInstanceOf(ValidationError);
-            expect(world.qty(hamra.id, dress.skuId, 'sellable')).toBe(0);
+            expect(world.qty(hamra.id, dress.skuId, 'non_sellable')).toBe(0);
+        });
+    });
+
+    describe('accepting received stock for sale', () => {
+        it('moves good held units to sellable after inspection', async () => {
+            const t = await makeSent();
+            await receive.execute(t.id, { lines: [{ skuId: dress.skuId, accepted: 8, damaged: 1 }] }, key(), hamraStaff());
+            const { transfer } = await accept.execute(t.id, { lines: [{ skuId: dress.skuId, quantity: 8 }] }, key(), hamraStaff());
+            expect(world.qty(hamra.id, dress.skuId, 'sellable')).toBe(8);
+            expect(world.qty(hamra.id, dress.skuId, 'non_sellable')).toBe(1);
+            expect(lineOf(transfer, dress.skuId)).toMatchObject({ releasedQty: 8, onHoldQty: 0 });
+        });
+
+        it('cannot release more than is on hold', async () => {
+            const t = await makeSent();
+            await receive.execute(t.id, { lines: [{ skuId: dress.skuId, accepted: 3 }] }, key(), hamraManager());
+            await expect(accept.execute(t.id, { lines: [{ skuId: dress.skuId, quantity: 4 }] }, key(), hamraManager())).rejects.toThrow('Only 3 good units are still on hold');
         });
     });
 
@@ -345,7 +364,7 @@ describe('transfers between the warehouse and the branches', () => {
             const arrivedOnSale = world.qty(hamra.id, dress.skuId, 'sellable');
             const onHold = world.qty(hamra.id, dress.skuId, 'non_sellable');
             const lost = -world.ledger.filter((m) => m.type === 'transfer_resolution').reduce((s, m) => s + m.delta, 0);
-            expect([left, arrivedOnSale, onHold, lost]).toEqual([10, 7, 1, 2]);
+            expect([left, arrivedOnSale, onHold, lost]).toEqual([10, 0, 8, 2]);
             expect(arrivedOnSale + onHold + lost).toBe(left);
             expect(world.qty(hamra.id, dress.skuId, 'in_transit')).toBe(0);
             expect(world.ledger.every((m) => m.balanceAfter >= 0)).toBe(true);

@@ -155,7 +155,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
     });
 
     describe('deleting branches', () => {
-        it('a new branch is deleted; one with sales, stock or recorded changes is refused (deactivate it); only the admin', async () => {
+        it('purges branch history on delete but blocks transfers linked to another branch; only the admin', async () => {
             const fresh = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGD-${stamp}`, name: 'To delete' })).body.id;
             await request(app).put(`/users/${staff2Id}/branches/${fresh}`).set(as(adminId));
             expect((await request(app).delete(`/branches/${fresh}`).set(as(managerId))).status).toBe(403);
@@ -165,17 +165,35 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
             expect((await request(app).delete('/branches/abc').set(as(adminId))).status).toBe(404);
 
             const sku = await newSku((await newStyle()).id);
-            await open(sku.id, hamraId, 5);
-            const used = await request(app).delete(`/branches/${hamraId}`).set(as(adminId));
-            expect(used.status).toBe(409);
-            expect(used.body.message).toMatch(/deactivate it instead/);
-            await open(sku.id, warehouseId, 2);                                                       // the warehouse has history only once something moved there (on a fresh database it has none)
-            expect((await request(app).delete(`/branches/${warehouseId}`).set(as(adminId))).status).toBe(409);
+            const withHistory = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGX-${stamp}`, name: 'Branch with history' })).body.id;
+            await open(sku.id, withHistory, 5);
+            const used = await request(app).delete(`/branches/${withHistory}`).set(as(adminId));
+            expect(used.status).toBe(204);
+            expect((await request(app).get('/branches').set(as(adminId))).body.map((b: { id: string }) => b.id)).not.toContain(withHistory);
+            expect(await prisma.stockBalance.count({ where: { branchId: withHistory } })).toBe(0);
+            expect(await prisma.stockMovement.count({ where: { branchId: withHistory } })).toBe(0);
+
+            const withSale = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGS-${stamp}`, name: 'Branch with sales' })).body.id;
+            await request(app).put(`/users/${staff2Id}/branches/${withSale}`).set(as(adminId));
+            await open(sku.id, withSale, 5);
+            expect((await sell(staff2Id, withSale, sku.id, 1)).status).toBe(201);
+            expect((await request(app).delete(`/branches/${withSale}`).set(as(adminId))).status).toBe(204);
+            expect(await prisma.sale.count({ where: { branchId: withSale } })).toBe(0);
+            expect(await prisma.stockMovement.count({ where: { branchId: withSale } })).toBe(0);
+
+            const withTransfer = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGTX-${stamp}`, name: 'Branch with transfer' })).body.id;
+            await prisma.transfer.create({ data: { sourceBranchId: withTransfer, destinationBranchId: hamraId, requestedBy: adminId } });
+            const transferBlock = await request(app).delete(`/branches/${withTransfer}`).set(as(adminId));
+            expect(transferBlock.status).toBe(409);
+            expect(transferBlock.body.message).toMatch(/transfers involving another branch/);
+
+            const warehouseProbe = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGZ-${stamp}`, name: 'Warehouse probe' })).body.id;
+            await open(sku.id, warehouseProbe, 2);
+            expect((await request(app).delete(`/branches/${warehouseProbe}`).set(as(adminId))).status).toBe(204);
 
             const renamed = (await request(app).post('/branches').set(as(adminId)).send({ code: `MGR-${stamp}`, name: 'Renamed' })).body.id;
             await request(app).patch(`/branches/${renamed}`).set(as(adminId)).send({ name: 'Renamed once' });
-            expect((await request(app).delete(`/branches/${renamed}`).set(as(adminId))).status).toBe(409);                  // a recorded change is history too
-            expect((await request(app).patch(`/branches/${renamed}`).set(as(adminId)).send({ isActive: false })).body.isActive).toBe(false);
+            expect((await request(app).delete(`/branches/${renamed}`).set(as(adminId))).status).toBe(204);
         });
     });
 

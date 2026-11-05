@@ -46,6 +46,7 @@ const draft = (userId: string, from: string, to: string, lines: { skuId: string;
     request(app).post('/transfers').set(as(userId)).set('Idempotency-Key', key()).send({ sourceBranchId: from, destinationBranchId: to, lines, ...extra });
 const dispatch = (userId: string, id: string, body: object = {}, k = key()) => request(app).post(`/transfers/${id}/dispatch`).set(as(userId)).set('Idempotency-Key', k).send(body);
 const receive = (userId: string, id: string, lines: object[], k = key()) => request(app).post(`/transfers/${id}/receive`).set(as(userId)).set('Idempotency-Key', k).send({ lines });
+const accept = (userId: string, id: string, lines: object[], k = key()) => request(app).post(`/transfers/${id}/accept`).set(as(userId)).set('Idempotency-Key', k).send({ lines });
 const resolve = (userId: string, id: string, reason: string, k = key()) => request(app).post(`/transfers/${id}/resolve`).set(as(userId)).set('Idempotency-Key', k).send({ reason });
 const sell = (userId: string, branchId: string, skuId: string, quantity: number) =>
     request(app).post('/sales').set(as(userId)).set('Idempotency-Key', key()).send({ branchId, lines: [{ skuId, quantity }], payments: [{ method: 'cash', amount: (45 * quantity).toFixed(2) }] });
@@ -93,19 +94,25 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
             const got = await receive(hamraStaffId, id, [{ skuId: sku, accepted: 8, damaged: 1 }]);
             expect(got.status, JSON.stringify(got.body)).toBe(200);
             expect(got.body).toMatchObject({ status: 'partially_received', totals: { received: 9, onTheRoad: 1 } });
-            expect([await qty(hamraId, sku, 'sellable'), await qty(hamraId, sku, 'non_sellable'), await qty(hamraId, sku, 'in_transit')]).toEqual([18, 1, 1]);
+            expect([await qty(hamraId, sku, 'sellable'), await qty(hamraId, sku, 'non_sellable'), await qty(hamraId, sku, 'in_transit')]).toEqual([10, 9, 1]);
 
             const closed = await resolve(hamraManagerId, id, 'One piece lost by the courier');
             expect(closed.status, JSON.stringify(closed.body)).toBe(200);
-            expect(closed.body).toMatchObject({ status: 'closed', totals: { received: 9, lost: 1, onTheRoad: 0 } });
+            expect(closed.body).toMatchObject({ status: 'closed', totals: { received: 9, lost: 1, onTheRoad: 0, onHold: 8 } });
+
+            const released = await accept(hamraStaffId, id, [{ skuId: sku, quantity: 8 }]);
+            expect(released.status, JSON.stringify(released.body)).toBe(200);
+            expect(released.body.totals).toMatchObject({ releasedToSellable: 8, onHold: 0 });
             expect([await qty(hamraId, sku, 'in_transit'), await qty(warehouseId, sku, 'sellable') + await qty(hamraId, sku, 'sellable') + await qty(hamraId, sku, 'non_sellable')]).toEqual([0, 59]);      // 60 - 1 lost
 
             const ledger = await prisma.stockMovement.findMany({ where: { transferId: id }, orderBy: { occurredAt: 'asc' } });
-            expect(ledger.map((m) => m.movementType)).toEqual(['transfer_dispatch', 'transfer_dispatch', 'transfer_receipt', 'transfer_receipt', 'transfer_receipt', 'transfer_resolution']);
+            expect(ledger.map((m) => m.movementType)).toEqual([
+                'transfer_dispatch', 'transfer_dispatch', 'transfer_receipt', 'transfer_receipt', 'transfer_receipt', 'transfer_resolution', 'transfer_release', 'transfer_release',
+            ]);
             expect(ledger.find((m) => m.movementType === 'transfer_resolution')).toMatchObject({ quantityDelta: -1, bucket: 'in_transit', reason: 'One piece lost by the courier' });
 
             const audit = await request(app).get(`/audit-events?entityType=transfer&entityId=${id}`).set(as(adminId));
-            expect(audit.body.map((e: { action: string }) => e.action).reverse()).toEqual(['transfer.create', 'transfer.dispatch', 'transfer.receive', 'transfer.resolve']);
+            expect(audit.body.map((e: { action: string }) => e.action).reverse()).toEqual(['transfer.create', 'transfer.dispatch', 'transfer.receive', 'transfer.resolve', 'transfer.accept']);
             expect(audit.body[0].by).toMatchObject({ id: hamraManagerId });
         });
 
@@ -116,6 +123,8 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
             expect(t.status).toBe(201);
             expect((await dispatch(hamraManagerId, t.body.id)).body.status).toBe('dispatched');
             expect((await receive(adminId, t.body.id, [{ skuId: sku, accepted: 4 }])).body.status).toBe('received');
+            expect([await qty(hamraId, sku, 'sellable'), await qty(warehouseId, sku, 'sellable'), await qty(warehouseId, sku, 'non_sellable')]).toEqual([2, 0, 4]);
+            expect((await accept(adminId, t.body.id, [{ skuId: sku, quantity: 4 }])).body.totals.releasedToSellable).toBe(4);
             expect([await qty(hamraId, sku, 'sellable'), await qty(warehouseId, sku, 'sellable')]).toEqual([2, 4]);
         });
 
@@ -139,6 +148,8 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
             expect(await find()).toBeUndefined();                                                  // 10 here + 10 coming = 20: nothing more to send
             const got = await receive(hamraManagerId, t.body.id, [{ skuId: sku, accepted: 10 }]);
             expect(got.body.status).toBe('received');
+            expect(await find()).toMatchObject({ sellable: 10, inTransit: 0, suggested: 10, fillable: 10 }); // on hold until accept
+            expect((await accept(hamraManagerId, t.body.id, [{ skuId: sku, quantity: 10 }])).body.totals.onHold).toBe(0);
             expect(await find()).toBeUndefined();                                                  // now it is on the shelf: 20
         });
     });
@@ -224,6 +235,8 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
             expect((await dispatch(hamraManagerId, asked.body.id)).status).toBe(403);
             expect((await dispatch(adminId, asked.body.id)).status).toBe(200);                        // the warehouse can
             expect((await receive(hamraStaffId, asked.body.id, [{ skuId: sku, accepted: 5 }])).body.status).toBe('received');
+            expect(await qty(hamraId, sku, 'sellable')).toBe(0);
+            expect((await accept(hamraStaffId, asked.body.id, [{ skuId: sku, quantity: 5 }])).body.status).toBe(200);
             expect(await qty(hamraId, sku, 'sellable')).toBe(5);
 
             const second = (await draft(hamraStaffId, warehouseId, hamraId, [{ skuId: sku, quantity: 1 }])).body.id;
@@ -250,7 +263,7 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
             const r1 = await receive(hamraManagerId, t, [{ skuId: sku, accepted: 4 }], rk);
             const r2 = await receive(hamraManagerId, t, [{ skuId: sku, accepted: 4 }], rk);
             expect([r1.status, r2.status, r2.headers['idempotent-replay']]).toEqual([200, 200, 'true']);
-            expect(await qty(hamraId, sku, 'sellable')).toBe(4);                                           // received ONCE
+            expect(await qty(hamraId, sku, 'non_sellable')).toBe(4);                                     // received ONCE, on hold
         });
 
         it('not enough at the sender: 409 with the items, nothing moves, and the shortage is recorded', async () => {
@@ -296,7 +309,8 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
             await dispatch(adminId, t);
             const results = await Promise.all([receive(hamraManagerId, t, [{ skuId: sku, accepted: 10 }]), receive(hamraStaffId, t, [{ skuId: sku, accepted: 10 }])]);
             expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-            expect(await qty(hamraId, sku, 'sellable')).toBe(10);
+            expect(await qty(hamraId, sku, 'sellable')).toBe(0);
+            expect(await qty(hamraId, sku, 'non_sellable')).toBe(10);
             expect(await qty(hamraId, sku, 'in_transit')).toBe(0);
         });
 
