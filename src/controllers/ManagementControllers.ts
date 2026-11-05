@@ -9,6 +9,7 @@ import { boolParam, intParam, textParam } from './query';
 import { CreateAdjustmentUsecase, ListAdjustmentsUsecase } from '../usecases/adjustments/AdjustmentUsecases';
 import { AdjustmentView } from '../repositories/interfaces/IAdjustmentRepository';
 import { CreateGoodsReceiptUsecase, GetGoodsReceiptUsecase, ListGoodsReceiptsUsecase } from '../usecases/goodsreceipts/GoodsReceiptUsecases';
+import { CreateInvoiceUsecase, GetInvoiceUsecase, ListInvoicesUsecase, UpdateInvoiceUsecase, FinalizeInvoiceUsecase, VoidInvoiceUsecase, DeleteInvoiceUsecase, GetInvoicePdfUsecase } from '../usecases/invoices/InvoiceUsecases';
 
 export class CategoryController {
     constructor(
@@ -124,5 +125,43 @@ export class GoodsReceiptController {
         );
         res.setHeader('X-Total-Count', String(total));
         res.status(200).json(items);
+    };
+}
+
+export class InvoiceController {
+    constructor(
+        private readonly create: CreateInvoiceUsecase,
+        private readonly get: GetInvoiceUsecase,
+        private readonly list: ListInvoicesUsecase,
+        private readonly update: UpdateInvoiceUsecase,
+        private readonly finalize: FinalizeInvoiceUsecase,
+        private readonly voidInvoice: VoidInvoiceUsecase,
+        private readonly remove: DeleteInvoiceUsecase,
+        private readonly pdf: GetInvoicePdfUsecase,
+    ) {}
+
+    createInvoice = async (req: Request, res: Response) => { res.status(201).json(await this.create.execute(req.body, getAuth(req))); };
+    getInvoice = async (req: Request, res: Response) => { res.status(200).json(await this.get.execute(req.params.id as string, getAuth(req))); };
+    updateInvoice = async (req: Request, res: Response) => { res.status(200).json(await this.update.execute(req.params.id as string, req.body, getAuth(req))); };
+    finalizeInvoice = async (req: Request, res: Response) => { res.status(200).json(await this.finalize.execute(req.params.id as string, getAuth(req))); };
+    voidInvoiceById = async (req: Request, res: Response) => { res.status(200).json(await this.voidInvoice.execute(req.params.id as string, req.body, getAuth(req))); };
+    deleteInvoice = async (req: Request, res: Response) => { await this.remove.execute(req.params.id as string, getAuth(req)); res.status(204).send(); };
+
+    listInvoices = async (req: Request, res: Response) => {
+        const { items, total } = await this.list.execute(
+            { kind: textParam(req, 'kind'), status: textParam(req, 'status'), branchId: textParam(req, 'branchId'), search: textParam(req, 'search'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
+            getAuth(req),
+        );
+        res.setHeader('X-Total-Count', String(total));
+        res.status(200).json(items);
+    };
+
+    // the file itself: the browser must ask with the token (fetch, then show or save the blob), a plain link would not carry it
+    invoicePdf = async (req: Request, res: Response) => {
+        const { pdf, filename } = await this.pdf.execute(req.params.id as string, getAuth(req));
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(200).send(pdf);
     };
 }

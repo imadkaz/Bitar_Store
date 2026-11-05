@@ -391,3 +391,50 @@ model GoodsReceiptLine {
 
   @@map("goods_receipt_lines")
 }
+
+// Add these two models at the END of prisma/schema.prisma, then: npx prisma generate
+
+model Invoice {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind              String
+  status            String    @default("draft")
+  reference         String?
+  transferId        String?   @map("transfer_id") @db.Uuid
+  saleId            String?   @map("sale_id") @db.Uuid
+  issuerBranchId    String    @map("issuer_branch_id") @db.Uuid
+  issuerName        String    @map("issuer_name")
+  recipientBranchId String?   @map("recipient_branch_id") @db.Uuid
+  recipientName     String?   @map("recipient_name")
+  recipientPhone    String?   @map("recipient_phone")
+  currency          String
+  subtotal          Decimal   @db.Decimal(14, 2)
+  discountTotal     Decimal   @default(0) @map("discount_total") @db.Decimal(14, 2)
+  total             Decimal   @db.Decimal(14, 2)
+  note              String?
+  issuedBy          String    @map("issued_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finalizedAt       DateTime? @map("finalized_at") @db.Timestamptz(6)
+  finalizedBy       String?   @map("finalized_by") @db.Uuid
+  voidedAt          DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidedBy          String?   @map("voided_by") @db.Uuid
+  voidReason        String?   @map("void_reason")
+  lines             InvoiceLine[]
+
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId      String  @map("invoice_id") @db.Uuid
+  lineNo         Int     @map("line_no") @db.SmallInt
+  skuId          String  @map("sku_id") @db.Uuid
+  skuCode        String  @map("sku_code")
+  description    String
+  quantity       Int
+  unitPrice      Decimal @map("unit_price") @db.Decimal(12, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  lineTotal      Decimal @map("line_total") @db.Decimal(14, 2)
+  invoice        Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("invoice_lines")
+}
