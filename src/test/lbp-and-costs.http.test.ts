@@ -256,11 +256,11 @@ describe.skipIf(!disposable)('pounds and costs (real database)', () => {
             await sell(staffId, b, unknown, 1, [{ method: 'cash', amount: '50.00', tendered: '50.00' }]);       // 50, cost unknown
             const res = await request(app).get(`/costs/profit?branchId=${b}&from=${today}&to=${today}`).set(as(mgrId));
             expect(res.status, JSON.stringify(res.body)).toBe(200);
-            expect(res.body.byBranch).toEqual([{ branchId: b, revenue: '200.00', cost: '31.50', profit: '118.50', unknownCostRevenue: '50.00', salesCount: 3 }]);      // 150 known - 31.50
-            expect(res.body.totals).toEqual({ revenue: '200.00', cost: '31.50', profit: '118.50', unknownCostRevenue: '50.00', salesCount: 3 });
+            expect(res.body.byBranch).toEqual([{ branchId: b, revenue: '200.00', cost: '31.50', profit: '118.50', unknownCostRevenue: '50.00', salesCount: 3, refunds: '0.00', returnedCost: '0.00', netRevenue: '200.00', netProfit: '118.50' }]);      // 150 known - 31.50
+            expect(res.body.totals).toEqual({ revenue: '200.00', cost: '31.50', profit: '118.50', unknownCostRevenue: '50.00', salesCount: 3, refunds: '0.00', returnedCost: '0.00', netRevenue: '200.00', netProfit: '118.50' });
             const empty = await newBranch('profit2');
             const none = await request(app).get(`/costs/profit?branchId=${empty}&from=${today}&to=${today}`).set(as(mgrId));
-            expect(none.body.totals).toEqual({ revenue: '0.00', cost: '0.00', profit: '0.00', unknownCostRevenue: '0.00', salesCount: 0 });
+            expect(none.body.totals).toEqual({ revenue: '0.00', cost: '0.00', profit: '0.00', unknownCostRevenue: '0.00', salesCount: 0, refunds: '0.00', returnedCost: '0.00', netRevenue: '0.00', netProfit: '0.00' });
         });
 
         it('only an admin or a manager; a branch you do not reach is refused; a bad period is a 400', async () => {

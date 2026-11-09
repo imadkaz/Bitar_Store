@@ -440,4 +440,48 @@ describe.skipIf(!disposable)('customer returns (real database)', () => {
             expect(used.body.message).toMatch(/already the exchange of/);
         });
     });
+
+    describe('the reports take the refunds off', () => {
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Beirut' }).format(new Date());
+        const warehouse = async () => {
+            const found = (await request(app).get('/branches').set(as(adminId))).body.find((x: { kind: string }) => x.kind === 'warehouse')?.id
+                ?? (await request(app).post('/branches').set(as(adminId)).send({ code: `RW${short}`, name: 'Main Warehouse (returns test)', kind: 'warehouse' })).body.id;
+            await request(app).patch(`/branches/${found}`).set(as(adminId)).send({ isActive: true });
+            return found as string;
+        };
+
+        it('sold 3 at 40 (cost 12), 1 comes back: net revenue 80, refunds 40; the profit is that of the 2 the customers kept; a rejected return changes nothing', async () => {
+            await warehouse();
+            const a = await newBranch('rep'), sku = await newSku(a);
+            expect((await request(app).post('/goods-receipts').set(as(adminId)).set('Idempotency-Key', key()).send({ supplierName: `Return Supplier ${short}`, lines: [{ skuId: sku, quantity: 10, unitCost: '12.00' }] })).status).toBe(201);
+            const sale = await sell(a, sku, 3, '120.00');
+            const range = `branchId=${a}&from=${today}&to=${today}`;
+            const before = (await request(app).get(`/reports/sales-summary?${range}`).set(as(mgrId))).body;
+            expect(before.totals).toMatchObject({ revenue: '120.00', refunds: '0.00', netRevenue: '120.00' });
+            const bad = (await receive(clerkId, sale.id, a, sku, 1)).body;
+            await request(app).post(`/returns/${bad.id}/reject`).set(as(mgrId)).send({ reason: 'Worn and washed' });
+            const r = (await receive(clerkId, sale.id, a, sku, 1)).body;
+            await approve(mgrId, r.id);
+            const after = (await request(app).get(`/reports/sales-summary?${range}`).set(as(mgrId))).body;
+            expect(after.totals).toMatchObject({ salesCount: 1, revenue: '120.00', refunds: '40.00', netRevenue: '80.00' });
+            expect(after.byBranch[0]).toMatchObject({ revenue: '120.00', refunds: '40.00', netRevenue: '80.00' });
+            expect(after.byDay.find((d: { day: string }) => d.day === today)).toMatchObject({ refunds: '40.00', netRevenue: '80.00' });
+            const profit = (await request(app).get(`/costs/profit?${range}`).set(as(mgrId))).body;
+            expect(profit.totals).toEqual({ revenue: '120.00', cost: '36.00', profit: '84.00', unknownCostRevenue: '0.00', salesCount: 1, refunds: '40.00', returnedCost: '12.00', netRevenue: '80.00', netProfit: '56.00' });       // 2 kept: 80 - 24 = 56
+        });
+
+        it('a branch that takes back goods sold elsewhere shows the refund at ITS side (it can be negative); the total of all branches is right', async () => {
+            const a = await newBranch('rep2'), b = await newBranch('rep2b'), sku = await newSku(a);
+            const sale = await sell(a, sku, 2, '80.00');
+            const r = (await receive(clerkId, sale.id, b, sku, 1)).body;
+            await approve(mgrId, r.id);
+            const both = (await request(app).get(`/reports/sales-summary?from=${today}&to=${today}`).set(as(adminId))).body;
+            const byBranch = (id: string) => both.byBranch.find((x: { branch: { id: string } }) => x.branch.id === id);
+            expect(byBranch(a)).toMatchObject({ revenue: '80.00', refunds: '0.00', netRevenue: '80.00' });
+            expect(byBranch(b)).toMatchObject({ revenue: '0.00', refunds: '40.00', netRevenue: '-40.00' });                                  // it paid out what another branch sold
+            const rows = both.rows.filter((x: { branch: { id: string } }) => x.branch.id === b);
+            expect(rows).toEqual([expect.objectContaining({ salesCount: 0, revenue: '0.00', refunds: '40.00', netRevenue: '-40.00' })]);       // a day with only a refund has its row
+            expect(Number(both.totals.netRevenue)).toBeCloseTo(Number(both.totals.revenue) - Number(both.totals.refunds), 2);
+        });
+    });
 });

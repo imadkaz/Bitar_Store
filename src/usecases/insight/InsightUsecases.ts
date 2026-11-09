@@ -142,9 +142,9 @@ export class GetSalesSummaryUsecase {
         const totals = rows.reduce(
             (t, r) => ({
                 salesCount: t.salesCount + r.salesCount, items: t.items + r.items, revenueCents: t.revenueCents + r.revenueCents, discountCents: t.discountCents + r.discountCents,
-                cashCents: t.cashCents + r.cashCents, whishCents: t.whishCents + r.whishCents, inStoreCents: t.inStoreCents + r.inStoreCents, socialMediaCents: t.socialMediaCents + r.socialMediaCents,
+                cashCents: t.cashCents + r.cashCents, whishCents: t.whishCents + r.whishCents, inStoreCents: t.inStoreCents + r.inStoreCents, socialMediaCents: t.socialMediaCents + r.socialMediaCents, refundsCents: t.refundsCents + r.refundsCents,
             }),
-            { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0 },
+            { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0, refundsCents: 0 },
         );
         return { from, to, branches: scope, rows, totals };
     }

@@ -1,3 +1,4 @@
+import { BUSINESS_TIME_ZONE } from '../utils/businessDate';
 import { Prisma, PrismaClient } from '../generated/prisma/client';
 import { parseMoneyToCents } from '../models/Money';
 import { IReportRepository, ReplenishmentRow, ReportScope, SalesSummaryRow, TopSkuRow } from './interfaces/IReportRepository';
@@ -40,10 +41,23 @@ export class ReportRepository implements IReportRepository {
               AND s.status <> 'reversed'
             GROUP BY s.branch_id, s.business_date
             ORDER BY s.business_date DESC, s.branch_id`);
-        return rows.map((r) => ({
+        const result: SalesSummaryRow[] = rows.map((r) => ({
             branchId: r.branch_id, day: r.day, salesCount: r.sales_count, items: r.items, revenueCents: cents(r.revenue), discountCents: cents(r.discounts),
-            cashCents: cents(r.cash), whishCents: cents(r.whish), inStoreCents: cents(r.in_store), socialMediaCents: cents(r.social_media),
+            cashCents: cents(r.cash), whishCents: cents(r.whish), inStoreCents: cents(r.in_store), socialMediaCents: cents(r.social_media), refundsCents: 0,
         }));
+        // The refunds of the returns approved in the period, by the day of the approval and the branch that took the goods back. A day with only refunds has a row too.
+        const refunds = await this.prisma.$queryRaw<{ branch_id: string; day: string; refunds: string }[]>(Prisma.sql`
+            SELECT r.receiving_branch_id AS branch_id, (r.decided_at AT TIME ZONE ${BUSINESS_TIME_ZONE})::date::text AS day, SUM(l.refund_value)::text AS refunds
+            FROM returns r JOIN return_lines l ON l.return_id = r.id
+            WHERE r.status = 'approved' AND r.receiving_branch_id IN (${uuidList(scope.branchIds)})
+              AND (r.decided_at AT TIME ZONE ${BUSINESS_TIME_ZONE})::date BETWEEN ${scope.from}::date AND ${scope.to}::date
+            GROUP BY 1, 2`);
+        for (const f of refunds) {
+            const row = result.find((x) => x.branchId === f.branch_id && x.day === f.day);
+            if (row) row.refundsCents = cents(f.refunds);
+            else result.push({ branchId: f.branch_id, day: f.day, salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0, refundsCents: cents(f.refunds) });
+        }
+        return result.sort((a, b) => (a.day === b.day ? a.branchId.localeCompare(b.branchId) : b.day.localeCompare(a.day)));
     }
 
     async topSkus(scope: ReportScope, limit: number): Promise<TopSkuRow[]> {

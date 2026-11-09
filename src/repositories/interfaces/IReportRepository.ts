@@ -15,6 +15,7 @@ export interface SalesSummaryRow {
     whishCents: number;
     inStoreCents: number;
     socialMediaCents: number;
+    refundsCents: number;        // refunds of returns APPROVED that day at this branch (the branch that took the goods back), paid or still to pay
 }
 
 export interface TopSkuRow {

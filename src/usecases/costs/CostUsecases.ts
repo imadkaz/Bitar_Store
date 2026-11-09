@@ -55,7 +55,9 @@ export class SkuCostUsecases {
 }
 
 // profit = what was sold minus what it cost, on the cost kept on the day of each sale. Lines whose cost was unknown are not guessed: their revenue is shown apart.
-export interface ProfitRow { branchId: string; revenue: string; cost: string; profit: string; unknownCostRevenue: string; salesCount: number }
+// revenue, cost and profit are what was SOLD. refunds = what the returns approved in the period give back (at the branch that took the goods); returnedCost = what those pieces cost (they are back in the stock);
+// netRevenue = revenue - refunds; netProfit = profit - the refunds of pieces whose cost is known + returnedCost: it equals the profit of what was kept by the customers.
+export interface ProfitRow { branchId: string; revenue: string; cost: string; profit: string; unknownCostRevenue: string; salesCount: number; refunds: string; returnedCost: string; netRevenue: string; netProfit: string }
 
 export class GetProfitUsecase {
     constructor(private readonly prisma: PrismaClient, private readonly resolveScope: (auth: AuthContext, branchId: unknown) => Promise<string[]>, private readonly range: (from: unknown, to: unknown) => { from: string; to: string }) {}
@@ -65,7 +67,7 @@ export class GetProfitUsecase {
         need(auth);
         const { from, to } = this.range(input.from, input.to);
         const branchIds = await this.resolveScope(auth, input.branchId);
-        if (branchIds.length === 0) return { from, to, totals: { revenue: '0.00', cost: '0.00', profit: '0.00', unknownCostRevenue: '0.00', salesCount: 0 }, byBranch: [] };
+        if (branchIds.length === 0) return { from, to, totals: { revenue: '0.00', cost: '0.00', profit: '0.00', unknownCostRevenue: '0.00', salesCount: 0, refunds: '0.00', returnedCost: '0.00', netRevenue: '0.00', netProfit: '0.00' }, byBranch: [] };
         const rows = await this.prisma.$queryRaw<{ branch_id: string; revenue: string; cost: string; known: string; n: number }[]>`
             SELECT s.branch_id, COALESCE(SUM(l.line_total), 0)::numeric(14,2)::text AS revenue,
                    COALESCE(SUM(l.quantity * c.unit_cost_snapshot), 0)::numeric(14,2)::text AS cost,
@@ -74,13 +76,23 @@ export class GetProfitUsecase {
             FROM sales s JOIN sale_lines l ON l.sale_id = s.id LEFT JOIN sale_line_costs c ON c.sale_line_id = l.id
             WHERE s.branch_id = ANY(${branchIds}::uuid[]) AND s.business_date BETWEEN ${from}::date AND ${to}::date AND s.status <> 'reversed'
             GROUP BY s.branch_id`;
+        const returned = await this.prisma.$queryRaw<{ branch_id: string; refunds: string; refunds_known: string; returned_cost: string }[]>`
+            SELECT r.receiving_branch_id AS branch_id, COALESCE(SUM(l.refund_value), 0)::numeric(14,2)::text AS refunds,
+                   COALESCE(SUM(l.refund_value) FILTER (WHERE c.unit_cost_snapshot IS NOT NULL), 0)::numeric(14,2)::text AS refunds_known,
+                   COALESCE(SUM(l.quantity * c.unit_cost_snapshot), 0)::numeric(14,2)::text AS returned_cost
+            FROM returns r JOIN return_lines l ON l.return_id = r.id LEFT JOIN sale_line_costs c ON c.sale_line_id = l.sale_line_id
+            WHERE r.status = 'approved' AND r.receiving_branch_id = ANY(${branchIds}::uuid[]) AND (r.decided_at AT TIME ZONE 'Asia/Beirut')::date BETWEEN ${from}::date AND ${to}::date
+            GROUP BY r.receiving_branch_id`;
         const cents = (v: string) => Math.round(Number(v) * 100);
         const byBranch = branchIds.map((id) => {
-            const r = rows.find((x) => x.branch_id === id);
+            const r = rows.find((x) => x.branch_id === id), back = returned.find((x) => x.branch_id === id);
             const revenue = r ? cents(r.revenue) : 0, cost = r ? cents(r.cost) : 0, known = r ? cents(r.known) : 0;
-            return { branchId: id, revenue: formatCents(revenue), cost: formatCents(cost), profit: formatCents(known - cost), unknownCostRevenue: formatCents(revenue - known), salesCount: r?.n ?? 0 };
+            const refunds = back ? cents(back.refunds) : 0, refundsKnown = back ? cents(back.refunds_known) : 0, returnedCost = back ? cents(back.returned_cost) : 0;
+            return { branchId: id, revenue: formatCents(revenue), cost: formatCents(cost), profit: formatCents(known - cost), unknownCostRevenue: formatCents(revenue - known), salesCount: r?.n ?? 0,
+                refunds: formatCents(refunds), returnedCost: formatCents(returnedCost), netRevenue: formatCents(revenue - refunds), netProfit: formatCents(known - cost - refundsKnown + returnedCost) };
         });
         const sum = (f: (r: ProfitRow) => string) => byBranch.reduce((n, r) => n + cents(f(r)), 0);
-        return { from, to, byBranch, totals: { revenue: formatCents(sum((r) => r.revenue)), cost: formatCents(sum((r) => r.cost)), profit: formatCents(sum((r) => r.profit)), unknownCostRevenue: formatCents(sum((r) => r.unknownCostRevenue)), salesCount: byBranch.reduce((n, r) => n + r.salesCount, 0) } };
+        return { from, to, byBranch, totals: { revenue: formatCents(sum((r) => r.revenue)), cost: formatCents(sum((r) => r.cost)), profit: formatCents(sum((r) => r.profit)), unknownCostRevenue: formatCents(sum((r) => r.unknownCostRevenue)), salesCount: byBranch.reduce((n, r) => n + r.salesCount, 0),
+            refunds: formatCents(sum((r) => r.refunds)), returnedCost: formatCents(sum((r) => r.returnedCost)), netRevenue: formatCents(sum((r) => r.netRevenue)), netProfit: formatCents(sum((r) => r.netProfit)) } };
     }
 }

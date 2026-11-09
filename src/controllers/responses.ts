@@ -190,8 +190,9 @@ export function toSuggestionsResponse(result: { warehouse: BranchModel | null; s
     };
 }
 
-const money = (r: { revenueCents: number; discountCents: number; cashCents: number; whishCents: number; inStoreCents: number; socialMediaCents: number }) => ({
-    revenue: formatCents(r.revenueCents), discounts: formatCents(r.discountCents), cash: formatCents(r.cashCents), whish: formatCents(r.whishCents),
+// revenue is what was SOLD; refunds are what returns approved in that period give back; netRevenue is the difference (it can be negative for a branch that took back more than it sold)
+const money = (r: { revenueCents: number; discountCents: number; cashCents: number; whishCents: number; inStoreCents: number; socialMediaCents: number; refundsCents: number }) => ({
+    revenue: formatCents(r.revenueCents), refunds: formatCents(r.refundsCents), netRevenue: formatCents(r.revenueCents - r.refundsCents), discounts: formatCents(r.discountCents), cash: formatCents(r.cashCents), whish: formatCents(r.whishCents),
     inStore: formatCents(r.inStoreCents), socialMedia: formatCents(r.socialMediaCents),
 });
 
@@ -200,10 +201,10 @@ type SummaryRow = SalesSummary['rows'][number];
 function addUp(rows: SummaryRow[], keyOf: (r: SummaryRow) => string): Map<string, Omit<SummaryRow, 'branchId' | 'day'>> {
     const out = new Map<string, Omit<SummaryRow, 'branchId' | 'day'>>();
     for (const r of rows) {
-        const t = out.get(keyOf(r)) ?? { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0 };
+        const t = out.get(keyOf(r)) ?? { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0, refundsCents: 0 };
         out.set(keyOf(r), {
             salesCount: t.salesCount + r.salesCount, items: t.items + r.items, revenueCents: t.revenueCents + r.revenueCents, discountCents: t.discountCents + r.discountCents,
-            cashCents: t.cashCents + r.cashCents, whishCents: t.whishCents + r.whishCents, inStoreCents: t.inStoreCents + r.inStoreCents, socialMediaCents: t.socialMediaCents + r.socialMediaCents,
+            cashCents: t.cashCents + r.cashCents, whishCents: t.whishCents + r.whishCents, inStoreCents: t.inStoreCents + r.inStoreCents, socialMediaCents: t.socialMediaCents + r.socialMediaCents, refundsCents: t.refundsCents + r.refundsCents,
         });
     }
     return out;
@@ -218,7 +219,7 @@ export function toSalesSummaryResponse(summary: SalesSummary) {
         // every branch of the scope, also the ones that sold nothing; the total is the sum of all of them
         totals: { salesCount: summary.totals.salesCount, items: summary.totals.items, ...money(summary.totals) },
         byBranch: summary.branches.map((b) => {
-            const t = perBranch.get(b.getId()) ?? { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0 };
+            const t = perBranch.get(b.getId()) ?? { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0, refundsCents: 0 };
             return { branch: names.get(b.getId()), salesCount: t.salesCount, items: t.items, ...money(t) };
         }),
         byDay: [...perDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, t]) => ({ day, salesCount: t.salesCount, items: t.items, ...money(t) })),
