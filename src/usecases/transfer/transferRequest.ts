@@ -59,6 +59,16 @@ export function parseReceiveBody(body: unknown): { skuId: string; accepted: numb
     });
 }
 
+// optional: what the person counting found (0 to 500 characters)
+export function parseReceiveNote(body: unknown): string | null {
+    const input = asObject(body);
+    if (input.note === undefined || input.note === null) return null;
+    if (typeof input.note !== 'string') throw new ValidationError('note must be text');
+    const note = input.note.trim();
+    if (note.length > 500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(note)) throw new ValidationError('note must be at most 500 characters');
+    return note === '' ? null : note;
+}
+
 export function parseResolveBody(body: unknown): { reason: unknown; lines?: { skuId: string; quantity: number }[] } {
     const input = asObject(body);
     return { reason: input.reason, lines: parseDispatchBody({ lines: input.lines }) };

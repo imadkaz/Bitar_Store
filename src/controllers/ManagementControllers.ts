@@ -120,7 +120,7 @@ export class GoodsReceiptController {
 
     listReceipts = async (req: Request, res: Response) => {
         const { items, total } = await this.list.execute(
-            { supplier: textParam(req, 'supplier'), invoiceNumber: textParam(req, 'invoiceNumber'), skuId: textParam(req, 'skuId'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
+            { supplier: textParam(req, 'supplier'), supplierId: textParam(req, 'supplierId'), invoiceNumber: textParam(req, 'invoiceNumber'), skuId: textParam(req, 'skuId'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
             getAuth(req),
         );
         res.setHeader('X-Total-Count', String(total));
@@ -149,7 +149,7 @@ export class InvoiceController {
 
     listInvoices = async (req: Request, res: Response) => {
         const { items, total } = await this.list.execute(
-            { kind: textParam(req, 'kind'), status: textParam(req, 'status'), branchId: textParam(req, 'branchId'), search: textParam(req, 'search'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
+            { kind: textParam(req, 'kind'), status: textParam(req, 'status'), branchId: textParam(req, 'branchId'), transferId: textParam(req, 'transferId'), saleId: textParam(req, 'saleId'), search: textParam(req, 'search'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
             getAuth(req),
         );
         res.setHeader('X-Total-Count', String(total));
@@ -163,5 +163,21 @@ export class InvoiceController {
         res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
         res.setHeader('Cache-Control', 'no-store');
         res.status(200).send(pdf);
+    };
+}
+
+
+import { CreateSupplierUsecase, GetSupplierUsecase, ListSuppliersUsecase, UpdateSupplierUsecase } from '../usecases/suppliers/SupplierUsecases';
+
+export class SupplierController {
+    constructor(private readonly create: CreateSupplierUsecase, private readonly get: GetSupplierUsecase, private readonly list: ListSuppliersUsecase, private readonly update: UpdateSupplierUsecase) {}
+
+    createSupplier = async (req: Request, res: Response) => { res.status(201).json(await this.create.execute(req.body, getAuth(req))); };
+    getSupplier = async (req: Request, res: Response) => { res.status(200).json(await this.get.execute(req.params.id as string, getAuth(req))); };
+    updateSupplier = async (req: Request, res: Response) => { res.status(200).json(await this.update.execute(req.params.id as string, req.body, getAuth(req))); };
+    listSuppliers = async (req: Request, res: Response) => {
+        const { items, total } = await this.list.execute({ search: textParam(req, 'search'), active: textParam(req, 'active'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') }, getAuth(req));
+        res.setHeader('X-Total-Count', String(total));
+        res.status(200).json(items);
     };
 }

@@ -36,14 +36,14 @@ export class InvoiceRepository implements IInvoiceRepository {
     async findById(id: string): Promise<InvoiceView | null> {
         const rows = await this.prisma.$queryRaw<Row[]>(Prisma.sql`${SELECT} WHERE i.id = ${id}::uuid`);
         if (rows.length === 0) return null;
-        const lines = await this.prisma.$queryRaw<{ line_no: number; sku_id: string; sku_code: string; description: string; quantity: number; unit_price: string; discount_amount: string; line_total: string }[]>(Prisma.sql`
-            SELECT line_no, sku_id, sku_code, description, quantity, unit_price::text AS unit_price, discount_amount::text AS discount_amount, line_total::text AS line_total
+        const lines = await this.prisma.$queryRaw<{ line_no: number; sku_id: string; sku_code: string; description: string; quantity: number; unit_price: string; discount_amount: string; line_total: string; price_source: InvoiceLineView['priceSource'] }[]>(Prisma.sql`
+            SELECT line_no, sku_id, sku_code, description, quantity, unit_price::text AS unit_price, discount_amount::text AS discount_amount, line_total::text AS line_total, price_source
             FROM invoice_lines WHERE invoice_id = ${id}::uuid ORDER BY line_no`);
         const payments = rows[0].sale_id
             ? await this.prisma.$queryRaw<{ method: string; amount: string; reference: string | null }[]>(Prisma.sql`
                 SELECT method, amount::text AS amount, whish_reference AS reference FROM sale_payments WHERE sale_id = ${rows[0].sale_id}::uuid ORDER BY created_at, method, id`)
             : [];
-        const views: InvoiceLineView[] = lines.map((l) => ({ lineNo: l.line_no, sku: { id: l.sku_id, code: l.sku_code }, description: l.description, quantity: l.quantity, unitPrice: l.unit_price, discount: l.discount_amount, lineTotal: l.line_total }));
+        const views: InvoiceLineView[] = lines.map((l) => ({ lineNo: l.line_no, sku: { id: l.sku_id, code: l.sku_code }, description: l.description, quantity: l.quantity, unitPrice: l.unit_price, discount: l.discount_amount, lineTotal: l.line_total, priceSource: l.price_source }));
         return { ...toSummary(rows[0]), lines: views, payments };
     }
 
@@ -54,11 +54,13 @@ export class InvoiceRepository implements IInvoiceRepository {
         const kind = filter.kind ? Prisma.sql`AND i.kind = ${filter.kind}` : Prisma.empty;
         const status = filter.status ? Prisma.sql`AND i.status = ${filter.status}` : Prisma.empty;
         const branch = filter.branchId ? Prisma.sql`AND (i.issuer_branch_id = ${filter.branchId}::uuid OR i.recipient_branch_id = ${filter.branchId}::uuid)` : Prisma.empty;
+        const transfer = filter.transferId ? Prisma.sql`AND i.transfer_id = ${filter.transferId}::uuid` : Prisma.empty;
+        const saleOf = filter.saleId ? Prisma.sql`AND i.sale_id = ${filter.saleId}::uuid` : Prisma.empty;
         const like = filter.search ? `%${filter.search.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
         const search = like ? Prisma.sql`AND (i.reference ILIKE ${like} OR i.recipient_name ILIKE ${like} OR i.issuer_name ILIKE ${like} OR t.reference ILIKE ${like} OR s.reference ILIKE ${like})` : Prisma.empty;
         const from = filter.from ? Prisma.sql`AND i.created_at >= (${filter.from}::date)::timestamp AT TIME ZONE ${BUSINESS_TIME_ZONE}` : Prisma.empty;
         const to = filter.to ? Prisma.sql`AND i.created_at < ((${filter.to}::date + 1))::timestamp AT TIME ZONE ${BUSINESS_TIME_ZONE}` : Prisma.empty;
-        const where = Prisma.sql`TRUE ${scope} ${kind} ${status} ${branch} ${search} ${from} ${to}`;
+        const where = Prisma.sql`TRUE ${scope} ${kind} ${status} ${branch} ${transfer} ${saleOf} ${search} ${from} ${to}`;
         const [rows, count] = await Promise.all([
             this.prisma.$queryRaw<Row[]>(Prisma.sql`${SELECT} WHERE ${where} ORDER BY i.created_at DESC, i.id DESC LIMIT ${filter.limit} OFFSET ${filter.offset}`),
             this.prisma.$queryRaw<{ n: number }[]>(Prisma.sql`SELECT COUNT(*)::int AS n FROM invoices i LEFT JOIN transfers t ON t.id = i.transfer_id LEFT JOIN sales s ON s.id = i.sale_id WHERE ${where}`),

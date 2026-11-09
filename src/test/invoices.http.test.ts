@@ -28,15 +28,27 @@ const key = () => `inv-${randomUUID()}`;
 let adminId = '', warehouseManagerId = '', hamraManagerId = '', tripoliManagerId = '', staffId = '';
 let hamraId = '', tripoliId = '', warehouseId = '', styleId = '';
 let counter = 0;
+const priceOf = new Map<string, string>();
+const receive = async (skuId: string, quantity: number, unitCost: string) => {
+    const res = await request(app).post('/goods-receipts').set(as(adminId)).set('Idempotency-Key', key()).send({ supplierName: `Invoice Supplier ${stamp}`, supplierInvoiceNumber: `INV-${stamp}-${++counter}`, lines: [{ skuId, quantity, unitCost }] });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+};
 
 const newSku = async (price = '20.00') => {
     const res = await request(app).post('/skus').set(as(adminId)).send({ styleId, skuCode: `IV${stamp}-${++counter}`, size: `S${counter}`, color: 'Grey', standardPrice: price });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+    priceOf.set(res.body.id, price);
     return res.body as { id: string; skuCode: string };
 };
 const stock = async (skuId: string, branchId: string, quantity: number) => {
+    if (branchId === warehouseId) return receive(skuId, quantity, priceOf.get(skuId) ?? '0.00');          // the warehouse is stocked by a delivery, so its cost is known
     const res = await request(app).post('/stock/opening').set(as(adminId)).set('Idempotency-Key', key()).send({ branchId, lines: [{ skuId, quantity }] });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+};
+// the dispatch raises a draft supply invoice by itself; these helpers start from a transfer WITHOUT one, so each test raises it on purpose
+const dropAutoDraft = async (transferId: string) => {
+    const auto = await request(app).get(`/invoices?transferId=${transferId}`).set(as(adminId));
+    for (const i of auto.body) expect((await request(app).delete(`/invoices/${i.id}`).set(as(adminId))).status).toBe(204);
 };
 // a transfer from the warehouse to Hamra that has been SENT
 const sentTransfer = async (lines: { skuId: string; quantity: number }[], to = hamraId) => {
@@ -44,6 +56,7 @@ const sentTransfer = async (lines: { skuId: string; quantity: number }[], to = h
     const t = await request(app).post('/transfers').set(as(adminId)).set('Idempotency-Key', key()).send({ sourceBranchId: warehouseId, destinationBranchId: to, lines });
     expect(t.status, JSON.stringify(t.body)).toBe(201);
     expect((await request(app).post(`/transfers/${t.body.id}/dispatch`).set(as(adminId)).set('Idempotency-Key', key())).status).toBe(200);
+    await dropAutoDraft(t.body.id);
     return t.body.id as string;
 };
 const sale = async (skuId: string, branchId: string, quantity = 2, discount = false) => {
@@ -322,5 +335,174 @@ describe.skipIf(!disposable)('invoices (real database)', () => {
             const refs = await prisma.$queryRaw<{ reference: string; n: number }[]>`SELECT reference, COUNT(*)::int AS n FROM invoices WHERE reference IS NOT NULL GROUP BY reference HAVING COUNT(*) > 1`;
             expect(refs).toEqual([]);
         });
+    });
+});
+
+// ---- added: the invoice of a transfer or of a sale can be asked for directly (the frontend no longer has to guess with a search)
+describe.skipIf(!disposable)('invoices found from what they are made of', () => {
+    let aId = '', whId = '', brId = '';
+    beforeAll(async () => {
+        await waitForDatabase(prisma);
+        aId = (await createUserWithPassword(new UserRepository(prisma), { email: `ivfind-${stamp}@bitar.test`, password: 'Password#123', fullName: 'Test ivfind', role: UserRole.ADMIN }, null)).getId();
+        const branches = await request(app).get('/branches').set(as(aId));
+        whId = branches.body.find((b: { kind: string }) => b.kind === 'warehouse')?.id;
+        if (!whId) whId = (await request(app).post('/branches').set(as(aId)).send({ code: `IFW-${stamp}`, name: 'Main Warehouse (find test)', kind: 'warehouse' })).body.id;
+        await request(app).patch(`/branches/${whId}`).set(as(aId)).send({ isActive: true });
+        brId = (await request(app).post('/branches').set(as(aId)).send({ code: `IFB-${stamp}`, name: 'Find Branch' })).body.id;
+    }, 120_000);
+
+    it('GET /invoices?transferId= returns exactly the invoice of that transfer, and the transfer shows its supply invoice', async () => {
+        const styleId = (await request(app).post('/styles').set(as(aId)).send({ code: `IFS${stamp}`, name: 'Find Dress' })).body.id;
+        const sku = (await request(app).post('/skus').set(as(aId)).send({ styleId, skuCode: `IF${stamp}-1`, size: 'M', color: 'Red', standardPrice: '30.00' })).body;
+        expect((await request(app).post('/goods-receipts').set(as(aId)).set('Idempotency-Key', `if-${randomUUID()}`).send({ supplierName: 'Find Supplier', supplierInvoiceNumber: `FIND-${stamp}`, lines: [{ skuId: sku.id, quantity: 10, unitCost: '12.00' }] })).status).toBe(201);
+        const sendOne = async (quantity: number) => {
+            const t = (await request(app).post('/transfers').set(as(aId)).set('Idempotency-Key', `if-${randomUUID()}`).send({ sourceBranchId: whId, destinationBranchId: brId, lines: [{ skuId: sku.id, quantity }] })).body;
+            await request(app).post(`/transfers/${t.id}/dispatch`).set(as(aId)).set('Idempotency-Key', `if-${randomUUID()}`);
+            return t.id as string;
+        };
+        const first = await sendOne(2);
+        const second = await sendOne(3);
+        // the dispatch raised the draft of each transfer by itself; drop the second one so it shows none
+        for (const i of (await request(app).get(`/invoices?transferId=${second}`).set(as(aId))).body) await request(app).delete(`/invoices/${i.id}`).set(as(aId));
+        const draft = (await request(app).get(`/invoices?transferId=${first}`).set(as(aId))).body[0];
+        expect(draft).toMatchObject({ kind: 'b2b', status: 'draft' });
+        const found = await request(app).get(`/invoices?transferId=${first}`).set(as(aId));
+        expect(found.status).toBe(200);
+        expect(found.body.map((i: { id: string }) => i.id)).toEqual([draft.id]);
+        expect((await request(app).get(`/invoices?transferId=${second}`).set(as(aId))).body).toEqual([]);
+        const detail = await request(app).get(`/transfers/${first}`).set(as(aId));
+        expect(detail.body.supplyInvoice).toMatchObject({ id: draft.id, reference: null, status: 'draft', total: draft.total });
+        expect((await request(app).get(`/transfers/${second}`).set(as(aId))).body.supplyInvoice).toBeNull();
+        const listed = (await request(app).get(`/transfers?branchId=${brId}`).set(as(aId))).body as { id: string; supplyInvoice: unknown }[];
+        expect(listed.find((t) => t.id === first)?.supplyInvoice).toMatchObject({ id: draft.id });
+        // finalized: the reference shows; voided: it disappears from the transfer, so a new one can be raised
+        const final = (await request(app).post(`/invoices/${draft.id}/finalize`).set(as(aId))).body;
+        expect((await request(app).get(`/transfers/${first}`).set(as(aId))).body.supplyInvoice).toMatchObject({ reference: final.reference, status: 'final' });
+        await request(app).post(`/invoices/${draft.id}/void`).set(as(aId)).send({ reason: 'Wrong price' });
+        expect((await request(app).get(`/transfers/${first}`).set(as(aId))).body.supplyInvoice).toBeNull();
+        expect((await request(app).get(`/invoices?transferId=${first}&status=void`).set(as(aId))).body.map((i: { id: string }) => i.id)).toEqual([draft.id]);
+    });
+
+    it('GET /invoices?saleId= returns the invoice of that sale; a bad id is a 400', async () => {
+        const styleId = (await request(app).post('/styles').set(as(aId)).send({ code: `IFT${stamp}`, name: 'Find Dress Two' })).body.id;
+        const sku = (await request(app).post('/skus').set(as(aId)).send({ styleId, skuCode: `IF${stamp}-2`, size: 'L', color: 'Blue', standardPrice: '20.00' })).body;
+        await request(app).post('/stock/opening').set(as(aId)).set('Idempotency-Key', `if-${randomUUID()}`).send({ branchId: brId, lines: [{ skuId: sku.id, quantity: 5 }] });
+        const sale = (await request(app).post('/sales').set(as(aId)).set('Idempotency-Key', `if-${randomUUID()}`).send({ branchId: brId, lines: [{ skuId: sku.id, quantity: 1 }], payments: [{ method: 'cash', amount: '20.00', tendered: '20.00' }] })).body;
+        const invoice = (await request(app).post('/invoices').set(as(aId)).send({ saleId: sale.id, customerName: 'Find Customer' })).body;
+        expect((await request(app).get(`/invoices?saleId=${sale.id}`).set(as(aId))).body.map((i: { id: string }) => i.id)).toEqual([invoice.id]);
+        expect((await request(app).get(`/invoices?saleId=${randomUUID()}`).set(as(aId))).body).toEqual([]);
+        for (const q of ['transferId=abc', 'saleId=5']) expect((await request(app).get(`/invoices?${q}`).set(as(aId))).status, q).toBe(400);
+    });
+});
+
+
+describe.skipIf(!disposable)('the supply invoice is priced at the cost of the goods, not at the selling price', () => {
+    const sentFromWarehouse = async (skuId: string, quantity: number) => {
+        const t = await request(app).post('/transfers').set(as(adminId)).set('Idempotency-Key', key()).send({ sourceBranchId: warehouseId, destinationBranchId: hamraId, lines: [{ skuId, quantity }] });
+        expect(t.status, JSON.stringify(t.body)).toBe(201);
+        expect((await request(app).post(`/transfers/${t.body.id}/dispatch`).set(as(adminId)).set('Idempotency-Key', key())).status).toBe(200);
+        await dropAutoDraft(t.body.id);
+        return t.body.id as string;
+    };
+    const draftOf = async (transferId: string) => (await invoice(adminId, { transferId })).body as { id: string; total: string; lines: { sku: { code: string }; unitPrice: string; lineTotal: string; priceSource: string }[] };
+
+    it('the price is the weighted average cost of what was received, and the selling price of the catalog is ignored', async () => {
+        const sku = await newSku('99.00');                                  // sold for 99.00 in the shop
+        await receive(sku.id, 10, '20.00');
+        await receive(sku.id, 10, '30.00');                                 // average cost: 25.00
+        const draft = await draftOf(await sentFromWarehouse(sku.id, 4));
+        expect(draft.lines[0]).toMatchObject({ unitPrice: '25.00', lineTotal: '100.00', priceSource: 'cost' });
+        expect(draft.total).toBe('100.00');
+    });
+
+    it('the average follows the stock: what left the warehouse does not count, a free sample lowers it', async () => {
+        const sku = await newSku('50.00');
+        await receive(sku.id, 10, '30.00');
+        await sentFromWarehouse(sku.id, 4);                                 // 6 left at 30.00
+        await receive(sku.id, 6, '0.00');                                   // 6 free samples: (6 x 30 + 6 x 0) / 12 = 15.00
+        expect((await draftOf(await sentFromWarehouse(sku.id, 2))).lines[0]).toMatchObject({ unitPrice: '15.00', priceSource: 'cost' });
+    });
+
+    it('two deliveries of the same product at the same moment: the average is right whichever comes first', async () => {
+        const sku = await newSku('80.00');
+        await Promise.all([receive(sku.id, 10, '20.00'), receive(sku.id, 10, '40.00')]);       // (10 x 20 + 10 x 40) / 20 = 30.00 in both orders
+        expect((await draftOf(await sentFromWarehouse(sku.id, 1))).lines[0]).toMatchObject({ unitPrice: '30.00', priceSource: 'cost' });
+    });
+
+    it('no cost known (opening stock): the line is priced 0 and marked missing; the invoice cannot be finalized until its price is set', async () => {
+        const sku = await newSku('60.00');
+        await request(app).post('/stock/opening').set(as(adminId)).set('Idempotency-Key', key()).send({ branchId: warehouseId, lines: [{ skuId: sku.id, quantity: 5 }] });
+        const draft = await draftOf(await sentFromWarehouse(sku.id, 2));
+        expect(draft.lines[0]).toMatchObject({ unitPrice: '0.00', lineTotal: '0.00', priceSource: 'missing' });
+        const refused = await request(app).post(`/invoices/${draft.id}/finalize`).set(as(adminId));
+        expect(refused.status).toBe(409);
+        expect(refused.body.message).toContain(draft.lines[0].sku.code);
+        const edited = await request(app).patch(`/invoices/${draft.id}`).set(as(adminId)).send({ lines: [{ skuId: sku.id, unitPrice: '35.50' }] });
+        expect(edited.body.lines[0]).toMatchObject({ unitPrice: '35.50', priceSource: 'manual' });
+        expect((await request(app).post(`/invoices/${draft.id}/finalize`).set(as(adminId))).status).toBe(200);
+    });
+
+    it('a price the warehouse sets by hand is marked manual; the invoice of a sale is marked sale', async () => {
+        const sku = await newSku('40.00');
+        await receive(sku.id, 10, '18.00');
+        const draft = await draftOf(await sentFromWarehouse(sku.id, 3));
+        const edited = await request(app).patch(`/invoices/${draft.id}`).set(as(adminId)).send({ lines: [{ skuId: sku.id, unitPrice: '22.00' }] });
+        expect(edited.body.lines[0]).toMatchObject({ unitPrice: '22.00', priceSource: 'manual' });
+        const other = await newSku('20.00');
+        const s = await sale(other.id, hamraId, 1);
+        expect((await invoice(adminId, { saleId: s.id })).body.lines[0].priceSource).toBe('sale');
+    });
+});
+
+
+describe.skipIf(!disposable)('dispatching raises the draft supply invoice by itself', () => {
+    const dispatch = async (from: string, to: string, lines: { skuId: string; quantity: number }[], only?: { skuId: string; quantity: number }[]) => {
+        const t = await request(app).post('/transfers').set(as(adminId)).set('Idempotency-Key', key()).send({ sourceBranchId: from, destinationBranchId: to, lines });
+        expect(t.status, JSON.stringify(t.body)).toBe(201);
+        const k = key();
+        const d = await request(app).post(`/transfers/${t.body.id}/dispatch`).set(as(adminId)).set('Idempotency-Key', k).send(only ? { lines: only } : {});
+        expect(d.status, JSON.stringify(d.body)).toBe(200);
+        return { id: t.body.id as string, key: k, body: d.body };
+    };
+
+    it('from the warehouse: a draft supply invoice of what was really sent, at cost, already on the transfer', async () => {
+        const a = await newSku('70.00');
+        const b = await newSku('30.00');
+        await receive(a.id, 10, '40.00');
+        await receive(b.id, 10, '12.00');
+        const sent = await dispatch(warehouseId, hamraId, [{ skuId: a.id, quantity: 5 }, { skuId: b.id, quantity: 4 }], [{ skuId: a.id, quantity: 3 }, { skuId: b.id, quantity: 4 }]);     // 3 of the 5 are sent
+        const found = (await request(app).get(`/invoices?transferId=${sent.id}`).set(as(adminId))).body;
+        expect(found).toHaveLength(1);
+        expect(found[0]).toMatchObject({ kind: 'b2b', status: 'draft', reference: null, total: '168.00' });          // 3 x 40.00 + 4 x 12.00
+        const detail = (await request(app).get(`/transfers/${sent.id}`).set(as(adminId))).body;
+        expect(detail.supplyInvoice).toMatchObject({ id: found[0].id, status: 'draft', total: '168.00' });
+        expect(sent.body.supplyInvoice).toMatchObject({ id: found[0].id });                                          // the answer of the dispatch itself already shows it
+        const lines = (await request(app).get(`/invoices/${found[0].id}`).set(as(adminId))).body.lines.map((l: { quantity: number; unitPrice: string; priceSource: string }) => [l.quantity, l.unitPrice, l.priceSource]);
+        expect(lines.sort()).toEqual([[3, '40.00', 'cost'], [4, '12.00', 'cost']]);
+    });
+
+    it('the receiving branch is not held up by it: it sees the draft, receives, and the invoice is finalized afterwards', async () => {
+        const a = await newSku('55.00');
+        await receive(a.id, 6, '25.00');
+        const sent = await dispatch(warehouseId, hamraId, [{ skuId: a.id, quantity: 6 }]);
+        const received = await request(app).post(`/transfers/${sent.id}/receive`).set(as(hamraManagerId)).set('Idempotency-Key', key()).send({ lines: [{ skuId: a.id, accepted: 6 }] });
+        expect(received.status, JSON.stringify(received.body)).toBe(200);              // no invoice needed to receive
+        expect((await request(app).get(`/transfers/${sent.id}`).set(as(hamraManagerId))).body.supplyInvoice).toMatchObject({ status: 'draft' });
+        const draftId = (await request(app).get(`/invoices?transferId=${sent.id}`).set(as(adminId))).body[0].id;
+        expect((await request(app).post(`/invoices/${draftId}/finalize`).set(as(warehouseManagerId))).status).toBe(200);
+        expect((await request(app).get(`/transfers/${sent.id}`).set(as(hamraManagerId))).body.supplyInvoice).toMatchObject({ status: 'final' });
+    });
+
+    it('a replay of the same dispatch raises nothing more; a dispatch that is not from the warehouse raises none', async () => {
+        const a = await newSku('45.00');
+        await receive(a.id, 10, '20.00');
+        const sent = await dispatch(warehouseId, hamraId, [{ skuId: a.id, quantity: 2 }]);
+        const replay = await request(app).post(`/transfers/${sent.id}/dispatch`).set(as(adminId)).set('Idempotency-Key', sent.key).send({});
+        expect(replay.status).toBe(200);
+        expect((await request(app).get(`/invoices?transferId=${sent.id}`).set(as(adminId))).body).toHaveLength(1);
+        expect((await request(app).post(`/transfers/${sent.id}/receive`).set(as(adminId)).set('Idempotency-Key', key()).send({ lines: [{ skuId: a.id, accepted: 2 }] })).status).toBe(200);          // Hamra now has 2
+        const back = await dispatch(hamraId, warehouseId, [{ skuId: a.id, quantity: 1 }]);                      // a return to the warehouse: not a supply
+        expect((await request(app).get(`/invoices?transferId=${back.id}`).set(as(adminId))).body).toEqual([]);
+        expect((await request(app).get(`/transfers/${back.id}`).set(as(adminId))).body.supplyInvoice).toBeNull();
     });
 });

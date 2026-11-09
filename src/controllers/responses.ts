@@ -187,11 +187,33 @@ const money = (r: { revenueCents: number; discountCents: number; cashCents: numb
     inStore: formatCents(r.inStoreCents), socialMedia: formatCents(r.socialMediaCents),
 });
 
+// the same figures added up by one key: a branch (over all the days) or a day (over all the branches)
+type SummaryRow = SalesSummary['rows'][number];
+function addUp(rows: SummaryRow[], keyOf: (r: SummaryRow) => string): Map<string, Omit<SummaryRow, 'branchId' | 'day'>> {
+    const out = new Map<string, Omit<SummaryRow, 'branchId' | 'day'>>();
+    for (const r of rows) {
+        const t = out.get(keyOf(r)) ?? { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0 };
+        out.set(keyOf(r), {
+            salesCount: t.salesCount + r.salesCount, items: t.items + r.items, revenueCents: t.revenueCents + r.revenueCents, discountCents: t.discountCents + r.discountCents,
+            cashCents: t.cashCents + r.cashCents, whishCents: t.whishCents + r.whishCents, inStoreCents: t.inStoreCents + r.inStoreCents, socialMediaCents: t.socialMediaCents + r.socialMediaCents,
+        });
+    }
+    return out;
+}
+
 export function toSalesSummaryResponse(summary: SalesSummary) {
     const names = new Map(summary.branches.map((b) => [b.getId(), toLocationResponse(b)]));
+    const perBranch = addUp(summary.rows, (r) => r.branchId);
+    const perDay = addUp(summary.rows, (r) => r.day);
     return {
         from: summary.from, to: summary.to,
+        // every branch of the scope, also the ones that sold nothing; the total is the sum of all of them
         totals: { salesCount: summary.totals.salesCount, items: summary.totals.items, ...money(summary.totals) },
+        byBranch: summary.branches.map((b) => {
+            const t = perBranch.get(b.getId()) ?? { salesCount: 0, items: 0, revenueCents: 0, discountCents: 0, cashCents: 0, whishCents: 0, inStoreCents: 0, socialMediaCents: 0 };
+            return { branch: names.get(b.getId()), salesCount: t.salesCount, items: t.items, ...money(t) };
+        }),
+        byDay: [...perDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, t]) => ({ day, salesCount: t.salesCount, items: t.items, ...money(t) })),
         rows: summary.rows.map((r) => ({ day: r.day, branch: names.get(r.branchId) ?? { id: r.branchId }, salesCount: r.salesCount, items: r.items, ...money(r) })),
     };
 }
@@ -218,10 +240,12 @@ export function toTransferResponse(t: TransferView) {
         requestedAt: t.requestedAt,
         dispatchedBy: t.dispatchedBy,
         dispatchedAt: t.dispatchedAt,
+        supplyInvoice: t.supplyInvoice,
         lines: t.lines.map((l) => ({
             sku: { id: l.skuId, code: l.skuCode, styleName: l.styleName, size: l.size, color: l.color },
-            requested: l.requestedQty, dispatched: l.dispatchedQty, received: l.receivedQty, lost: l.resolvedQty, onTheRoad: l.outstandingQty,
+            requested: l.requestedQty, dispatched: l.dispatchedQty, received: l.receivedQty, damaged: l.damagedQty, accepted: l.receivedQty - l.damagedQty, lost: l.resolvedQty, onTheRoad: l.outstandingQty,
         })),
-        totals: { requested: sum((l) => l.requestedQty), dispatched: sum((l) => l.dispatchedQty), received: sum((l) => l.receivedQty), lost: sum((l) => l.resolvedQty), onTheRoad: sum((l) => l.outstandingQty) },
+        totals: { requested: sum((l) => l.requestedQty), dispatched: sum((l) => l.dispatchedQty), received: sum((l) => l.receivedQty), damaged: sum((l) => l.damagedQty), accepted: sum((l) => l.receivedQty - l.damagedQty), lost: sum((l) => l.resolvedQty), onTheRoad: sum((l) => l.outstandingQty) },
+        receipts: t.receipts,
     };
 }

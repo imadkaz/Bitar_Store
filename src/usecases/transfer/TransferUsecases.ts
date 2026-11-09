@@ -13,7 +13,7 @@ import { isUuid } from '../../utils/uuid';
 import { resolvePaging } from '../styles/paging';
 import { parseOptionalUuid } from '../insight/scope';
 import { parseIdempotencyKey } from '../sales/saleRequest';
-import { hashOf, parseCreateTransfer, parseDispatchBody, parseReceiveBody, parseResolveBody } from './transferRequest';
+import { hashOf, parseCreateTransfer, parseDispatchBody, parseReceiveBody, parseReceiveNote, parseResolveBody } from './transferRequest';
 
 export interface TransferActionResult {
     transfer: TransferView;
@@ -89,8 +89,13 @@ export class CreateTransferUsecase extends TransferStepUsecase {
 
 // ---------------------------------------------------------------------------------------------------------------
 // The sender sends: the pieces leave its sellable stock and are "on the road" to the destination. One transaction.
+// Raises the draft supply invoice of a transfer. The stock has already moved, so a failure here never undoes the dispatch: the invoice can be raised by hand.
+export interface SupplyInvoiceDrafts {
+    raise(transferId: string, actorId: string): Promise<void>;
+}
+
 export class DispatchTransferUsecase extends TransferStepUsecase {
-    constructor(unitOfWork: ITransferUnitOfWork, transfers: ITransferRepository, private readonly alerts: IStockAlertRepository, private readonly now: () => Date = () => new Date()) {
+    constructor(unitOfWork: ITransferUnitOfWork, transfers: ITransferRepository, private readonly alerts: IStockAlertRepository, private readonly now: () => Date = () => new Date(), private readonly invoiceDrafts?: SupplyInvoiceDrafts) {
         super(unitOfWork, transfers);
     }
 
@@ -142,6 +147,9 @@ export class DispatchTransferUsecase extends TransferStepUsecase {
             }
             throw error;
         }
+        if (!replayed && this.invoiceDrafts) {
+            try { await this.invoiceDrafts.raise(id, actorId); } catch { /* a transfer that is not a supply (not from the warehouse), or no price yet: nothing to raise, or it is raised by hand */ }
+        }
         return this.reload(id, replayed);
     }
 }
@@ -155,7 +163,8 @@ export class ReceiveTransferUsecase extends TransferStepUsecase {
         const id = transferId(rawId);
         const key = parseIdempotencyKey(idempotencyKeyHeader);
         const items = parseReceiveBody(body);
-        const hash = hashOf('transfer.receive', id, items);
+        const note = parseReceiveNote(body);
+        const hash = hashOf('transfer.receive', id, note === null ? items : { items, note });
 
         let replayed = false;
         await this.unitOfWork.run(async (tx) => {
@@ -168,6 +177,7 @@ export class ReceiveTransferUsecase extends TransferStepUsecase {
             if (!auth.canAccessBranch(transfer.destinationBranchId)) throw new ForbiddenError('Only the receiving place can receive');
             const moves = transfer.receive(items);
             await tx.applyMoves(id, moves, actorId, claim.keyId);
+            await tx.recordReceipt({ transferId: id, actorId, note, lines: items.map((i) => ({ skuId: i.skuId, accepted: i.accepted, damaged: i.damaged ?? 0 })), idempotencyKeyId: claim.keyId });
             await tx.saveTransfer(transfer, actorId);
             const damaged = items.reduce((s, i) => s + (i.damaged ?? 0), 0);
             await tx.audit({ actorId, action: 'transfer.receive', entityType: 'transfer', entityId: id, branchId: transfer.destinationBranchId, details: { accepted: items.reduce((s, i) => s + i.accepted, 0), damaged, status: transfer.getStatus() } });
