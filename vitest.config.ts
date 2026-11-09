@@ -7,5 +7,6 @@ export default defineConfig({
         testTimeout: 180_000,
         hookTimeout: 180_000,
         exclude: ['**/node_modules/**', '**/build/**'],
+        setupFiles: ['./vitest.setup.ts'],
     },
 });

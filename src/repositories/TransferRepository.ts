@@ -12,7 +12,15 @@ export class TransferRepository implements ITransferRepository {
         const skus = new Map((await this.prisma.sku.findMany({ where: { id: { in: skuIds } }, include: { style: true } })).map((s) => [s.id, s]));
         const places = new Map((await this.prisma.branch.findMany({ where: { id: { in: placeIds } } })).map((b) => [b.id, { id: b.id, code: b.code, name: b.name, kind: b.kind }]));
         const users = new Map((await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+        const receiptRows = await this.prisma.$queryRaw<{ id: string; transfer_id: string; received_by: string; received_at: Date; note: string | null; receiver: string | null }[]>`
+            SELECT r.id, r.transfer_id, r.received_by, r.received_at, r.note, u.full_name AS receiver FROM transfer_receipts r LEFT JOIN users u ON u.id = r.received_by
+            WHERE r.transfer_id = ANY(${rows.map((t) => t.id)}::uuid[]) ORDER BY r.received_at, r.id`;
+        const receiptLines = receiptRows.length === 0 ? [] : await this.prisma.$queryRaw<{ receipt_id: string; sku_id: string; accepted_qty: number; damaged_qty: number }[]>`
+            SELECT receipt_id, sku_id, accepted_qty, damaged_qty FROM transfer_receipt_lines WHERE receipt_id = ANY(${receiptRows.map((r) => r.id)}::uuid[])`;
+        const damagedBy = new Map<string, number>();
+        for (const r of receiptRows) for (const l of receiptLines.filter((x) => x.receipt_id === r.id)) damagedBy.set(`${r.transfer_id}:${l.sku_id}`, (damagedBy.get(`${r.transfer_id}:${l.sku_id}`) ?? 0) + l.damaged_qty);
         const who = (id: string) => ({ id, name: users.get(id) ?? null });
+        const invoices = new Map((await this.prisma.invoice.findMany({ where: { transferId: { in: rows.map((t) => t.id) }, status: { not: 'void' } }, select: { id: true, transferId: true, reference: true, status: true, total: true } })).map((i) => [i.transferId, { id: i.id, reference: i.reference, status: i.status, total: i.total.toFixed(2) }]));
 
         return rows.map((t) => ({
             id: t.id,
@@ -30,15 +38,15 @@ export class TransferRepository implements ITransferRepository {
                 .sort((a, b) => a.sku.skuCode.localeCompare(b.sku.skuCode))
                 .map(({ line, sku }) => ({
                     skuId: line.skuId, skuCode: sku.skuCode, styleName: sku.style.name, size: sku.size, color: sku.color,
-                    requestedQty: line.requestedQty,
-                    dispatchedQty: line.dispatchedQty,
-                    receivedQty: line.receivedQty,
-                    damagedQty: line.damagedQty,
-                    releasedQty: line.releasedQty,
-                    resolvedQty: line.resolvedQty,
+                    requestedQty: line.requestedQty, dispatchedQty: line.dispatchedQty, receivedQty: line.receivedQty, resolvedQty: line.resolvedQty,
                     outstandingQty: line.dispatchedQty - line.receivedQty - line.resolvedQty,
-                    onHoldQty: Math.max(0, line.receivedQty - line.damagedQty - line.releasedQty),
+                    damagedQty: damagedBy.get(`${t.id}:${line.skuId}`) ?? 0,
                 })),
+            receipts: receiptRows.filter((x) => x.transfer_id === t.id).map((x) => ({
+                id: x.id, at: x.received_at, by: { id: x.received_by, name: x.receiver }, note: x.note,
+                lines: receiptLines.filter((l) => l.receipt_id === x.id).map((l) => ({ skuId: l.sku_id, accepted: l.accepted_qty, damaged: l.damaged_qty })),
+            })),
+            supplyInvoice: invoices.get(t.id) ?? null,
         }));
     }
 

@@ -320,8 +320,6 @@ model TransferLine {
   requestedQty  Int      @map("requested_qty")
   dispatchedQty Int      @default(0) @map("dispatched_qty")
   receivedQty   Int      @default(0) @map("received_qty")
-  damagedQty    Int      @default(0) @map("damaged_qty")
-  releasedQty   Int      @default(0) @map("released_qty")
   resolvedQty   Int      @default(0) @map("resolved_qty")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -369,8 +367,9 @@ model GoodsReceipt {
   id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reference             String   @default(dbgenerated("('GR-'::text || lpad((nextval('goods_receipt_ref_seq'::regclass))::text, 8, '0'::text))"))
   branchId              String   @map("branch_id") @db.Uuid
+  supplierId            String   @map("supplier_id") @db.Uuid
   supplierName          String   @map("supplier_name")
-  supplierInvoiceNumber String   @map("supplier_invoice_number")
+  supplierInvoiceNumber String?  @map("supplier_invoice_number")
   invoiceDate           DateTime @map("invoice_date") @db.Date
   currency              String   @default("USD")
   note                  String?
@@ -436,7 +435,22 @@ model InvoiceLine {
   unitPrice      Decimal @map("unit_price") @db.Decimal(12, 2)
   discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(12, 2)
   lineTotal      Decimal @map("line_total") @db.Decimal(14, 2)
+  priceSource    String? @map("price_source")
   invoice        Invoice @relation(fields: [invoiceId], references: [id])
 
   @@map("invoice_lines")
+}
+
+model Supplier {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  phone     String?
+  note      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("suppliers")
 }

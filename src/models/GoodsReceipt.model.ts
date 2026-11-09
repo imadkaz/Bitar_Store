@@ -11,8 +11,9 @@ export const MAX_UNIT_COST_CENTS = 10_000_000;     // 100,000.00 per piece: keep
 export interface GoodsReceiptLineRequest { skuId: string; quantity: number; unitCostCents: number }
 
 export interface GoodsReceiptRequest {
-    supplierName: string;
-    supplierInvoiceNumber: string;
+    supplierId: string | null;               // the supplier chosen from the list ...
+    supplierName: string | null;             // ... or named (an existing supplier is found by its name; a manager's request can add a new one)
+    supplierInvoiceNumber: string | null;    // optional: not every delivery comes with one
     invoiceDate: string;           // YYYY-MM-DD, the date ON the supplier's invoice
     currency: string;
     note: string | null;
@@ -30,14 +31,28 @@ const CONTROL = /[\u0000-\u001f\u007f]/;
 export function parseGoodsReceipt(body: unknown, now: Date): GoodsReceiptRequest {
     const input = asObject(body);
 
-    if (typeof input.supplierName !== 'string') throw new ValidationError('supplierName is required');
-    const supplierName = input.supplierName.trim().replace(/\s+/g, ' ');
-    if (supplierName.length < 2 || supplierName.length > 100 || CONTROL.test(supplierName)) throw new ValidationError('supplierName must be 2 to 100 characters');
+    let supplierId: string | null = null;
+    if (input.supplierId !== undefined && input.supplierId !== null) {
+        if (typeof input.supplierId !== 'string' || !isUuid(input.supplierId)) throw new ValidationError('supplierId must be the id of a supplier');
+        supplierId = input.supplierId;
+    }
+    let supplierName: string | null = null;
+    if (input.supplierName !== undefined && input.supplierName !== null) {
+        if (typeof input.supplierName !== 'string') throw new ValidationError('supplierName must be text');
+        supplierName = input.supplierName.trim().replace(/\s+/g, ' ');
+        if (supplierName.length < 2 || supplierName.length > 100 || CONTROL.test(supplierName)) throw new ValidationError('supplierName must be 2 to 100 characters');
+    }
+    if (supplierId === null && supplierName === null) throw new ValidationError('supplierId is required (or supplierName): who delivered the goods');
 
+    // the supplier's invoice number is optional (BL-06); when it is given it must be a real one
+    let supplierInvoiceNumber: string | null = null;
     const supplierInvoiceValue = input.supplierInvoiceNumber;
-    if (typeof supplierInvoiceValue !== 'string' && typeof supplierInvoiceValue !== 'number') throw new ValidationError('supplierInvoiceNumber is required: the number written on the supplier\'s invoice');
-    const supplierInvoiceNumber = String(supplierInvoiceValue).trim();
-    if (supplierInvoiceNumber.length < 1 || supplierInvoiceNumber.length > 50 || CONTROL.test(supplierInvoiceNumber)) throw new ValidationError('supplierInvoiceNumber must be 1 to 50 characters');
+    if (supplierInvoiceValue !== undefined && supplierInvoiceValue !== null) {
+        if (typeof supplierInvoiceValue !== 'string' && typeof supplierInvoiceValue !== 'number') throw new ValidationError('supplierInvoiceNumber must be text or a number');
+        const text = String(supplierInvoiceValue).trim();
+        if (text.length > 50 || CONTROL.test(text)) throw new ValidationError('supplierInvoiceNumber must be at most 50 characters');
+        supplierInvoiceNumber = text === '' ? null : text;
+    }
 
     const today = businessDateOf(now);
     let invoiceDate = today;
@@ -74,7 +89,7 @@ const unitCostCents = parseMoneyToCents(unitCostValue, `${where}: unitCost`);
     });
     if (new Set(lines.map((l) => l.skuId)).size !== lines.length) throw new ValidationError('Each product can appear only once in a receipt');
 
-    return { supplierName, supplierInvoiceNumber, invoiceDate, currency, note, lines };
+    return { supplierId, supplierName, supplierInvoiceNumber, invoiceDate, currency, note, lines };
 }
 
 // What the supplier's invoice adds up to, in cents (every line is a whole number of pieces times a whole number of cents)

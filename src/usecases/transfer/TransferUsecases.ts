@@ -13,7 +13,7 @@ import { isUuid } from '../../utils/uuid';
 import { resolvePaging } from '../styles/paging';
 import { parseOptionalUuid } from '../insight/scope';
 import { parseIdempotencyKey } from '../sales/saleRequest';
-import { hashOf, parseAcceptBody, parseCreateTransfer, parseDispatchBody, parseReceiveBody, parseResolveBody } from './transferRequest';
+import { hashOf, parseCreateTransfer, parseDispatchBody, parseReceiveBody, parseReceiveNote, parseResolveBody } from './transferRequest';
 
 export interface TransferActionResult {
     transfer: TransferView;
@@ -89,8 +89,13 @@ export class CreateTransferUsecase extends TransferStepUsecase {
 
 // ---------------------------------------------------------------------------------------------------------------
 // The sender sends: the pieces leave its sellable stock and are "on the road" to the destination. One transaction.
+// Raises the draft supply invoice of a transfer. The stock has already moved, so a failure here never undoes the dispatch: the invoice can be raised by hand.
+export interface SupplyInvoiceDrafts {
+    raise(transferId: string, actorId: string): Promise<void>;
+}
+
 export class DispatchTransferUsecase extends TransferStepUsecase {
-    constructor(unitOfWork: ITransferUnitOfWork, transfers: ITransferRepository, private readonly alerts: IStockAlertRepository, private readonly now: () => Date = () => new Date()) {
+    constructor(unitOfWork: ITransferUnitOfWork, transfers: ITransferRepository, private readonly alerts: IStockAlertRepository, private readonly now: () => Date = () => new Date(), private readonly invoiceDrafts?: SupplyInvoiceDrafts) {
         super(unitOfWork, transfers);
     }
 
@@ -142,12 +147,15 @@ export class DispatchTransferUsecase extends TransferStepUsecase {
             }
             throw error;
         }
+        if (!replayed && this.invoiceDrafts) {
+            try { await this.invoiceDrafts.raise(id, actorId); } catch { /* a transfer that is not a supply (not from the warehouse), or no price yet: nothing to raise, or it is raised by hand */ }
+        }
         return this.reload(id, replayed);
     }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The destination says what arrived: good pieces go on hold for inspection, damaged ones to hold. It can be done in several rounds.
+// The destination says what arrived: good pieces go on sale, damaged ones to hold. It can be done in several rounds.
 export class ReceiveTransferUsecase extends TransferStepUsecase {
     async execute(rawId: string, body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): Promise<TransferActionResult> {
         const actorId = auth.user.getId();
@@ -155,7 +163,8 @@ export class ReceiveTransferUsecase extends TransferStepUsecase {
         const id = transferId(rawId);
         const key = parseIdempotencyKey(idempotencyKeyHeader);
         const items = parseReceiveBody(body);
-        const hash = hashOf('transfer.receive', id, items);
+        const note = parseReceiveNote(body);
+        const hash = hashOf('transfer.receive', id, note === null ? items : { items, note });
 
         let replayed = false;
         await this.unitOfWork.run(async (tx) => {
@@ -168,40 +177,10 @@ export class ReceiveTransferUsecase extends TransferStepUsecase {
             if (!auth.canAccessBranch(transfer.destinationBranchId)) throw new ForbiddenError('Only the receiving place can receive');
             const moves = transfer.receive(items);
             await tx.applyMoves(id, moves, actorId, claim.keyId);
+            await tx.recordReceipt({ transferId: id, actorId, note, lines: items.map((i) => ({ skuId: i.skuId, accepted: i.accepted, damaged: i.damaged ?? 0 })), idempotencyKeyId: claim.keyId });
             await tx.saveTransfer(transfer, actorId);
             const damaged = items.reduce((s, i) => s + (i.damaged ?? 0), 0);
             await tx.audit({ actorId, action: 'transfer.receive', entityType: 'transfer', entityId: id, branchId: transfer.destinationBranchId, details: { accepted: items.reduce((s, i) => s + i.accepted, 0), damaged, status: transfer.getStatus() } });
-            await tx.completeIdempotencyKey(claim.keyId, 'transfer', id);
-        });
-        return this.reload(id, replayed);
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// After inspection, the destination releases good received units to the sellable shelf.
-export class AcceptTransferUsecase extends TransferStepUsecase {
-    async execute(rawId: string, body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): Promise<TransferActionResult> {
-        const actorId = auth.user.getId();
-        if (!auth.can('transfers.receive')) throw new ForbiddenError('Missing permission: transfers.receive');
-        const id = transferId(rawId);
-        const key = parseIdempotencyKey(idempotencyKeyHeader);
-        const items = parseAcceptBody(body);
-        const hash = hashOf('transfer.accept', id, items);
-
-        let replayed = false;
-        await this.unitOfWork.run(async (tx) => {
-            const claim = await tx.claimIdempotencyKey(actorId, 'transfer.accept', key, hash);
-            if (claim.kind === 'replay') { replayed = true; return; }
-            if (claim.kind === 'different_request') throw new ConflictError('This Idempotency-Key was already used for a different request');
-            if (claim.kind === 'in_progress') throw new ConflictError('This request is already being processed');
-
-            const transfer = await lockedTransferFor(tx, id, auth);
-            if (!auth.canAccessBranch(transfer.destinationBranchId)) throw new ForbiddenError('Only the receiving place can accept stock for sale');
-            const moves = transfer.acceptToSellable(items);
-            await tx.applyMoves(id, moves, actorId, claim.keyId);
-            await tx.saveTransfer(transfer, actorId);
-            const released = items.reduce((s, i) => s + i.quantity, 0);
-            await tx.audit({ actorId, action: 'transfer.accept', entityType: 'transfer', entityId: id, branchId: transfer.destinationBranchId, details: { released, status: transfer.getStatus() } });
             await tx.completeIdempotencyKey(claim.keyId, 'transfer', id);
         });
         return this.reload(id, replayed);

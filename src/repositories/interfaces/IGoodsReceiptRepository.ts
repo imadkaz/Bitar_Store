@@ -9,8 +9,9 @@ export interface GoodsReceiptSummary {
     id: string;
     reference: string;
     warehouse: { id: string; code: string; name: string };
+    supplier: { id: string; phone: string | null };      // the supplier now (its phone can change); supplierName below is the name it had on the day
     supplierName: string;
-    supplierInvoiceNumber: string;
+    supplierInvoiceNumber: string | null;
     invoiceDate: string;
     currency: string;
     note: string | null;
@@ -27,6 +28,7 @@ export interface GoodsReceiptView extends GoodsReceiptSummary {
 
 export interface GoodsReceiptListFilter {
     supplier?: string;        // part of the supplier's name
+    supplierId?: string;
     invoiceNumber?: string;   // part of the invoice number
     skuId?: string;
     from?: string;            // the date on the invoice, YYYY-MM-DD

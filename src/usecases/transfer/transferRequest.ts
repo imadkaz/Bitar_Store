@@ -59,12 +59,14 @@ export function parseReceiveBody(body: unknown): { skuId: string; accepted: numb
     });
 }
 
-export function parseAcceptBody(body: unknown): { skuId: string; quantity: number }[] {
+// optional: what the person counting found (0 to 500 characters)
+export function parseReceiveNote(body: unknown): string | null {
     const input = asObject(body);
-    return listOf(input.lines, 'lines', 200).map((raw, i) => {
-        const line = asObject(raw, `Line ${i + 1}`);
-        return { skuId: uuidOf(line.skuId, `Line ${i + 1}: skuId`), quantity: line.quantity as number };
-    });
+    if (input.note === undefined || input.note === null) return null;
+    if (typeof input.note !== 'string') throw new ValidationError('note must be text');
+    const note = input.note.trim();
+    if (note.length > 500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(note)) throw new ValidationError('note must be at most 500 characters');
+    return note === '' ? null : note;
 }
 
 export function parseResolveBody(body: unknown): { reason: unknown; lines?: { skuId: string; quantity: number }[] } {

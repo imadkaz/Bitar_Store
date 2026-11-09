@@ -50,15 +50,7 @@ class PrismaTransferTransaction implements TransferTransaction {
         return Transfer.restore({
             id: row.id, reference: row.reference, sourceBranchId: row.sourceBranchId, destinationBranchId: row.destinationBranchId, status: row.status as TransferStatus,
             note: row.note, requestedBy: row.requestedBy,
-            lines: row.lines.map((l) => ({
-                skuId: l.skuId,
-                requestedQty: l.requestedQty,
-                dispatchedQty: l.dispatchedQty,
-                receivedQty: l.receivedQty,
-                damagedQty: l.damagedQty,
-                releasedQty: l.releasedQty,
-                resolvedQty: l.resolvedQty,
-            })),
+            lines: row.lines.map((l) => ({ skuId: l.skuId, requestedQty: l.requestedQty, dispatchedQty: l.dispatchedQty, receivedQty: l.receivedQty, resolvedQty: l.resolvedQty })),
         });
     }
 
@@ -73,6 +65,17 @@ class PrismaTransferTransaction implements TransferTransaction {
             FOR UPDATE`);
         for (const row of rows) quantities.set(row.sku_id, row.quantity);
         return quantities;
+    }
+
+    async recordReceipt(input: { transferId: string; actorId: string; note: string | null; lines: { skuId: string; accepted: number; damaged: number }[]; idempotencyKeyId: string }): Promise<void> {
+        const rows = await this.tx.$queryRaw<{ id: string }[]>`
+            INSERT INTO transfer_receipts (transfer_id, received_by, note, idempotency_key_id)
+            VALUES (${input.transferId}::uuid, ${input.actorId}::uuid, ${input.note}::text, ${input.idempotencyKeyId}::uuid) RETURNING id`;
+        for (const line of input.lines) {
+            await this.tx.$executeRaw`
+                INSERT INTO transfer_receipt_lines (receipt_id, sku_id, accepted_qty, damaged_qty)
+                VALUES (${rows[0].id}::uuid, ${line.skuId}::uuid, ${line.accepted}::int, ${line.damaged}::int)`;
+        }
     }
 
     async applyMoves(transferId: string, moves: StockMove[], actorId: string, idempotencyKeyId: string): Promise<void> {
@@ -112,13 +115,7 @@ class PrismaTransferTransaction implements TransferTransaction {
         for (const line of transfer.getLines()) {
             await this.tx.transferLine.update({
                 where: { transferId_skuId: { transferId: transfer.id, skuId: line.skuId } },
-                data: {
-                    dispatchedQty: line.dispatchedQty,
-                    receivedQty: line.receivedQty,
-                    damagedQty: line.damagedQty,
-                    releasedQty: line.releasedQty,
-                    resolvedQty: line.resolvedQty,
-                },
+                data: { dispatchedQty: line.dispatchedQty, receivedQty: line.receivedQty, resolvedQty: line.resolvedQty },
             });
         }
     }

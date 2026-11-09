@@ -67,17 +67,19 @@ import { GetStockOverviewUsecase, ListStockMovementsUsecase, GetReplenishmentSug
 import { ListReorderLevelsUsecase, SetReorderLevelUsecase, SetReorderLevelForStyleUsecase, DeleteReorderLevelUsecase } from '../usecases/reorder/ReorderLevelUsecases';
 import { StockInsightRoutes, ReorderLevelRoutes, ReplenishmentRoutes, ReportRoutes, AuditRoutes } from './Insight.Routes';
 import { LocationRepository } from '../repositories/LocationRepository';
-import { AcceptTransferUsecase, CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../usecases/transfer/TransferUsecases';
+import { SupplierRepository } from '../repositories/SupplierRepository';
+import { CreateSupplierUsecase, GetSupplierUsecase, ListSuppliersUsecase, UpdateSupplierUsecase } from '../usecases/suppliers/SupplierUsecases';
+import { CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../usecases/transfer/TransferUsecases';
 import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { SupplierController, AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
 import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, ListPlacesUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, InvoiceRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { SupplierRoutes, AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, InvoiceRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
 import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
@@ -215,6 +217,8 @@ const adjustmentController = new AdjustmentController(
     new ListAdjustmentsUsecase(branchRepository, adjustmentRepository),
 );
 
+const supplierRepository = new SupplierRepository(prisma);
+const supplierController = new SupplierController(new CreateSupplierUsecase(supplierRepository), new GetSupplierUsecase(supplierRepository), new ListSuppliersUsecase(supplierRepository), new UpdateSupplierUsecase(supplierRepository));
 const goodsReceiptController = new GoodsReceiptController(
     new CreateGoodsReceiptUsecase(locationRepository, goodsReceiptUnitOfWork, goodsReceiptRepository),
     new GetGoodsReceiptUsecase(locationRepository, goodsReceiptRepository),
@@ -236,9 +240,8 @@ const invoiceController = new InvoiceController(
 // ---- transfers
 const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
-    new DispatchTransferUsecase(transferUnitOfWork, transferRepository, stockAlertRepository),
+    new DispatchTransferUsecase(transferUnitOfWork, transferRepository, stockAlertRepository, undefined, { raise: async (transferId, actorId) => { await invoiceWriter.createFromTransfer(transferId, actorId, null, () => undefined); } }),
     new ReceiveTransferUsecase(transferUnitOfWork, transferRepository),
-    new AcceptTransferUsecase(transferUnitOfWork, transferRepository),
     new ResolveTransferUsecase(transferUnitOfWork, transferRepository),
     new CancelTransferUsecase(transferUnitOfWork, transferRepository),
     new GetTransferUsecase(transferRepository),
@@ -301,6 +304,7 @@ routes.use('/auth', AuthRoutes(authController, authenticate));
 
 routes.use('/stock/adjustments', AdjustmentRoutes(adjustmentController, authenticate));
 routes.use('/goods-receipts', GoodsReceiptRoutes(goodsReceiptController, authenticate));
+routes.use('/suppliers', SupplierRoutes(supplierController, authenticate));
 routes.use('/invoices', InvoiceRoutes(invoiceController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));

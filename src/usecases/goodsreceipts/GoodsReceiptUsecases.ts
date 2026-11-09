@@ -13,6 +13,7 @@ import { isUuid } from '../../utils/uuid';
 import { resolvePaging } from '../styles/paging';
 import { parseOptionalUuid, parseShopDay } from '../insight/scope';
 import { parseIdempotencyKey } from '../sales/saleRequest';
+import { canManageSuppliers } from '../suppliers/SupplierUsecases';
 
 export interface GoodsReceiptResult {
     receipt: GoodsReceiptView;
@@ -54,8 +55,11 @@ export class CreateGoodsReceiptUsecase extends WarehouseDocumentUsecase {
             if (claim.kind === 'different_request') throw new ConflictError('This Idempotency-Key was already used for a different request');
             if (claim.kind === 'in_progress') throw new ConflictError('This request is already being processed');
 
-            const duplicate = await tx.findDuplicate(request.supplierName, request.supplierInvoiceNumber);
-            if (duplicate) throw new ConflictError(`This supplier invoice was already received as ${duplicate.reference}`);
+            const supplier = await tx.resolveSupplier(request, canManageSuppliers(auth), actorId);
+            if (request.supplierInvoiceNumber !== null) {
+                const duplicate = await tx.findDuplicate(supplier.id, request.supplierInvoiceNumber);
+                if (duplicate) throw new ConflictError(`This supplier invoice was already received as ${duplicate.reference}`);
+            }
 
             const skus = await tx.findSkus(request.lines.map((l) => l.skuId));
             const known = new Map(skus.map((s) => [s.skuId, s]));
@@ -63,11 +67,11 @@ export class CreateGoodsReceiptUsecase extends WarehouseDocumentUsecase {
             const archived = skus.filter((s) => !s.skuActive || !s.styleActive).map((s) => s.skuCode);
             if (archived.length > 0) throw new ConflictError(`Archived products cannot be received: ${archived.join(', ')}`);
 
-            const created = await tx.insertReceipt(request, total, warehouse.id, actorId, claim.keyId);
+            const created = await tx.insertReceipt(request, supplier, total, warehouse.id, actorId, claim.keyId);
             await tx.applyReceipt(created.id, warehouse.id, request.lines, actorId, claim.keyId);
             await tx.audit({
                 actorId, action: 'goods_receipt.create', entityType: 'goods_receipt', entityId: created.id, branchId: warehouse.id,
-                details: { reference: created.reference, supplier: request.supplierName, invoice: request.supplierInvoiceNumber, lines: request.lines.length, pieces: request.lines.reduce((n, l) => n + l.quantity, 0), total: formatCents(total), currency: request.currency },
+                details: { reference: created.reference, supplier: supplier.name, supplierId: supplier.id, invoice: request.supplierInvoiceNumber, lines: request.lines.length, pieces: request.lines.reduce((n, l) => n + l.quantity, 0), total: formatCents(total), currency: request.currency },
             });
             await tx.completeIdempotencyKey(claim.keyId, 'goods_receipt', created.id);
             return created.id;
@@ -91,7 +95,7 @@ export class GetGoodsReceiptUsecase extends WarehouseDocumentUsecase {
 export class ListGoodsReceiptsUsecase extends WarehouseDocumentUsecase {
     constructor(locations: ILocationRepository, private readonly receipts: IGoodsReceiptRepository) { super(locations); }
 
-    async execute(input: { supplier?: unknown; invoiceNumber?: unknown; skuId?: unknown; from?: unknown; to?: unknown; limit?: unknown; offset?: unknown }, auth: AuthContext): Promise<{ items: GoodsReceiptSummary[]; total: number }> {
+    async execute(input: { supplier?: unknown; supplierId?: unknown; invoiceNumber?: unknown; skuId?: unknown; from?: unknown; to?: unknown; limit?: unknown; offset?: unknown }, auth: AuthContext): Promise<{ items: GoodsReceiptSummary[]; total: number }> {
         await this.warehouseFor(auth);
         const text = (value: unknown, label: string): string | undefined => {
             if (value === undefined) return undefined;
@@ -102,6 +106,6 @@ export class ListGoodsReceiptsUsecase extends WarehouseDocumentUsecase {
         const to = parseShopDay(input.to, 'to');
         if (from && to && from > to) throw new ValidationError('from must not be after to');
         const { limit, offset } = resolvePaging(input.limit, input.offset);
-        return this.receipts.list({ supplier: text(input.supplier, 'supplier'), invoiceNumber: text(input.invoiceNumber, 'invoiceNumber'), skuId: parseOptionalUuid(input.skuId, 'skuId'), from, to, limit, offset });
+        return this.receipts.list({ supplier: text(input.supplier, 'supplier'), supplierId: parseOptionalUuid(input.supplierId, 'supplierId'), invoiceNumber: text(input.invoiceNumber, 'invoiceNumber'), skuId: parseOptionalUuid(input.skuId, 'skuId'), from, to, limit, offset });
     }
 }

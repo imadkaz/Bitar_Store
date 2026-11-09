@@ -9,6 +9,7 @@ export interface InvoiceLineView {
     unitPrice: string;
     discount: string;
     lineTotal: string;
+    priceSource: 'cost' | 'missing' | 'manual' | 'sale' | null;     // where the price came from (null: made before this was recorded)
 }
 
 export interface InvoiceSummary {
@@ -42,6 +43,8 @@ export interface InvoiceListFilter {
     kind?: InvoiceKind;
     status?: InvoiceStatus;
     branchId?: string;
+    transferId?: string;            // the invoice of this transfer
+    saleId?: string;                // the invoice of this sale
     search?: string;                // the reference or the name of the customer or the branch
     from?: string;                  // YYYY-MM-DD, the day it was made
     to?: string;
