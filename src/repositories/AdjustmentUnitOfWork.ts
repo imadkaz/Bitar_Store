@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '../generated/prisma/client';
 import { centsOf } from '../mapper/Sale.Mapper';
 import { AdjustableBucket, AdjustmentRequest, PlannedMove } from '../models/Adjustment.model';
+import { compareStockBuckets } from '../models/StockBucket';
 import { ConflictError } from '../utils/exeptions/ConflictError';
 import { AuditInput, writeAudit } from './audit';
 import { claimIdempotencyKey, completeIdempotencyKey } from './idempotency';
@@ -32,7 +33,7 @@ class PrismaAdjustmentTransaction implements AdjustmentTransaction {
         const rows = await this.tx.$queryRaw<{ bucket: AdjustableBucket; quantity: number }[]>`
             SELECT bucket, quantity FROM stock_balances
             WHERE branch_id = ${branchId}::uuid AND sku_id = ${skuId}::uuid AND bucket IN (${Prisma.join(buckets)})
-            ORDER BY bucket
+            ORDER BY CASE bucket WHEN 'sellable' THEN 0 WHEN 'non_sellable' THEN 1 END
             FOR UPDATE`;
         for (const row of rows) quantities.set(row.bucket, row.quantity);
         return quantities;
@@ -46,7 +47,7 @@ class PrismaAdjustmentTransaction implements AdjustmentTransaction {
     }
 
     async applyMoves(adjustmentId: string, request: AdjustmentRequest, moves: PlannedMove[], actorId: string, idempotencyKeyId: string): Promise<void> {
-        for (const move of [...moves].sort((a, b) => a.bucket.localeCompare(b.bucket))) {
+        for (const move of [...moves].sort((a, b) => compareStockBuckets(a.bucket, b.bucket))) {
             let rows: { quantity: number }[];
             if (move.delta > 0) {
                 rows = await this.tx.$queryRaw<{ quantity: number }[]>`

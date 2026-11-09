@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '../generated/prisma/client';
 import { centsOf } from '../mapper/Sale.Mapper';
 import { StockBucket, StockMove, Transfer, TransferStatus } from '../models/Transfer.model';
+import { compareStockBuckets } from '../models/StockBucket';
 import { ConflictError } from '../utils/exeptions/ConflictError';
 import { AuditInput, writeAudit } from './audit';
 import { claimIdempotencyKey, completeIdempotencyKey } from './idempotency';
@@ -84,7 +85,7 @@ class PrismaTransferTransaction implements TransferTransaction {
 
     async applyMoves(transferId: string, moves: StockMove[], actorId: string, idempotencyKeyId: string): Promise<void> {
         // always in the same order (place, sku, bucket): two transfers touching the same balances never wait for each other in a circle
-        const ordered = [...moves].sort((a, b) => a.branchId.localeCompare(b.branchId) || a.skuId.localeCompare(b.skuId) || a.bucket.localeCompare(b.bucket));
+        const ordered = [...moves].sort((a, b) => a.branchId.localeCompare(b.branchId) || a.skuId.localeCompare(b.skuId) || compareStockBuckets(a.bucket, b.bucket));
         for (const move of ordered) {
             let rows: { quantity: number }[];
             if (move.delta > 0) {

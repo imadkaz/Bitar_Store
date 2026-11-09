@@ -1,12 +1,13 @@
 import { ConflictError } from '../utils/exeptions/ConflictError';
 import { ValidationError } from '../utils/exeptions/ValidationError';
+import type { StockBucket } from './StockBucket';
+
+export type { StockBucket } from './StockBucket';
 
 export const TRANSFER_STATUSES = ['draft', 'dispatched', 'partially_received', 'received', 'closed', 'cancelled'] as const;
 export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
 export const MAX_TRANSFER_LINES = 50;
 export const MAX_TRANSFER_QUANTITY = 10_000;
-
-export type StockBucket = 'sellable' | 'in_transit' | 'non_sellable';
 
 // One change of one stock number at one place. The ledger gets a row for each.
 export interface StockMove {
