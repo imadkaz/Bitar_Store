@@ -5,11 +5,16 @@
 -- The refund is the amount actually PAID for the returned units after discounts (never today's price), paid separately (cash or Whish), never more than was paid.
 -- A return can be made at ANY branch, linked to the original sale. Receiving, approving, releasing and paying a refund are distinct events.
 
-ALTER TABLE user_permission_overrides DROP CONSTRAINT upo_permission_valid;
-ALTER TABLE user_permission_overrides ADD CONSTRAINT upo_permission_valid CHECK (permission IN (
-  'sales.create','discounts.apply','catalog.create','transfers.dispatch','transfers.receive',
-  'returns.create','returns.refund','adjustments.create','reports.financial','users.administer',
-  'cash.open','cash.accept','cash.close','cash.move'));
+-- The new rules EXTEND the ones the database has today (they are not re-listed): the database may hold more than this repository knows about,
+-- and re-listing would refuse rows that exist. Each rule is read from the database and the new part is added to it.
+DO $$
+DECLARE def text;
+BEGIN
+  SELECT pg_get_constraintdef(oid) INTO def FROM pg_constraint WHERE conrelid = 'user_permission_overrides'::regclass AND conname = 'upo_permission_valid';
+  IF def IS NULL THEN RAISE EXCEPTION 'upo_permission_valid was not found'; END IF;
+  ALTER TABLE user_permission_overrides DROP CONSTRAINT upo_permission_valid;
+  EXECUTE 'ALTER TABLE user_permission_overrides ADD CONSTRAINT upo_permission_valid CHECK (' || substr(def, 7) || ' OR permission = ''returns.refund'')';
+END $$;
 
 CREATE SEQUENCE return_ref_seq;
 CREATE TABLE returns (
@@ -85,16 +90,22 @@ CREATE TRIGGER trg_return_refund_payments_immutable BEFORE UPDATE OR DELETE ON r
 -- the ledger: two new movements, each linked to its return (the goods enter the hold once; the release is separate)
 ALTER TABLE stock_movements ADD COLUMN return_id uuid REFERENCES returns(id);
 CREATE INDEX ix_stock_movements_return ON stock_movements (return_id) WHERE return_id IS NOT NULL;
-ALTER TABLE stock_movements DROP CONSTRAINT movements_type_valid;
-ALTER TABLE stock_movements ADD CONSTRAINT movements_type_valid CHECK (movement_type = ANY (ARRAY['opening','sale','sale_reversal','return','transfer_dispatch','transfer_receipt','transfer_return','transfer_resolution','adjustment','goods_receipt','return_approval','return_release']));
-ALTER TABLE stock_movements DROP CONSTRAINT movements_one_reference;
-ALTER TABLE stock_movements ADD CONSTRAINT movements_one_reference CHECK (num_nonnulls(sale_id, transfer_id, adjustment_id, import_batch_id, goods_receipt_id, return_id) = 1);
-ALTER TABLE stock_movements DROP CONSTRAINT movements_reference_matches_type;
-ALTER TABLE stock_movements ADD CONSTRAINT movements_reference_matches_type CHECK (
-     (movement_type = ANY (ARRAY['sale','sale_reversal','return']) AND sale_id IS NOT NULL)
-  OR (movement_type = ANY (ARRAY['transfer_dispatch','transfer_receipt','transfer_return','transfer_resolution']) AND transfer_id IS NOT NULL)
-  OR (movement_type = 'adjustment' AND adjustment_id IS NOT NULL)
-  OR (movement_type = 'opening' AND import_batch_id IS NOT NULL)
-  OR (movement_type = 'goods_receipt' AND goods_receipt_id IS NOT NULL)
-  OR (movement_type = ANY (ARRAY['return_approval','return_release']) AND return_id IS NOT NULL)
-);
+DO $$
+DECLARE type_def text; one_def text; match_def text;
+BEGIN
+  SELECT pg_get_constraintdef(oid) INTO type_def  FROM pg_constraint WHERE conrelid = 'stock_movements'::regclass AND conname = 'movements_type_valid';
+  SELECT pg_get_constraintdef(oid) INTO one_def   FROM pg_constraint WHERE conrelid = 'stock_movements'::regclass AND conname = 'movements_one_reference';
+  SELECT pg_get_constraintdef(oid) INTO match_def FROM pg_constraint WHERE conrelid = 'stock_movements'::regclass AND conname = 'movements_reference_matches_type';
+  IF type_def IS NULL OR one_def IS NULL OR match_def IS NULL THEN RAISE EXCEPTION 'a ledger rule was not found'; END IF;
+  IF position('goods_receipt_id' IN one_def) = 0 THEN RAISE EXCEPTION 'unexpected definition of movements_one_reference: %', one_def; END IF;
+  ALTER TABLE stock_movements DROP CONSTRAINT movements_type_valid;
+  ALTER TABLE stock_movements DROP CONSTRAINT movements_one_reference;
+  ALTER TABLE stock_movements DROP CONSTRAINT movements_reference_matches_type;
+  EXECUTE 'ALTER TABLE stock_movements ADD CONSTRAINT movements_type_valid CHECK (' || substr(type_def, 7) || ' OR movement_type = ANY (ARRAY[''return_approval'', ''return_release''])) NOT VALID';
+  EXECUTE 'ALTER TABLE stock_movements ADD CONSTRAINT movements_one_reference ' || replace(one_def, 'goods_receipt_id', 'goods_receipt_id, return_id') || ' NOT VALID';
+  EXECUTE 'ALTER TABLE stock_movements ADD CONSTRAINT movements_reference_matches_type CHECK (' || substr(match_def, 7) || ' OR (movement_type = ANY (ARRAY[''return_approval'', ''return_release'']) AND return_id IS NOT NULL)) NOT VALID';
+  -- the rows that exist were valid under the old rules, and the new rules only ADD to them: they are validated now (a failure here would say exactly which rule)
+  ALTER TABLE stock_movements VALIDATE CONSTRAINT movements_type_valid;
+  ALTER TABLE stock_movements VALIDATE CONSTRAINT movements_one_reference;
+  ALTER TABLE stock_movements VALIDATE CONSTRAINT movements_reference_matches_type;
+END $$;
