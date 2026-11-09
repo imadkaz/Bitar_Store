@@ -104,3 +104,21 @@ export const CostRoutes = (controller: CostController, authenticate: RequestHand
         .get('/profit', authenticate, asyncHandler(controller.getProfit))
         .get('/skus/:id', authenticate, asyncHandler(controller.getCost))
         .put('/skus/:id', authenticate, asyncHandler(controller.setCost));
+
+
+import { ReturnController } from '../controllers/ManagementControllers';
+
+// mounted at /returns: the use cases check the permission and the branch
+export const ReturnRoutes = (controller: ReturnController, authenticate: RequestHandler): Router =>
+    Router()
+        .get('/', authenticate, asyncHandler(controller.listReturns))
+        .post('/', authenticate, asyncHandler(controller.receiveReturn))
+        .get('/eligible', authenticate, asyncHandler(controller.eligible))
+        .get('/:id', authenticate, asyncHandler(controller.getReturn))
+        .post('/:id/custody', authenticate, asyncHandler(controller.takeCustody))
+        .post('/:id/approve', authenticate, asyncHandler(controller.approveReturn))
+        .post('/:id/reject', authenticate, asyncHandler(controller.rejectReturn))
+        .post('/:id/handback', authenticate, asyncHandler(controller.handbackReturn))
+        .post('/:id/release', authenticate, asyncHandler(controller.releaseReturn))
+        .post('/:id/refunds', authenticate, asyncHandler(controller.payRefund))
+        .post('/:id/exchange', authenticate, asyncHandler(controller.linkExchange));

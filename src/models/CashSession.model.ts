@@ -73,9 +73,9 @@ export function parseReview(body: unknown): { note: string | null } {
 }
 
 // Expected physical cash = what the drawer started with + the cash payments + cash added - cash taken out.
-// (Whish never changes the drawer. Cash refunds will be taken off here when returns exist.)
-export const expectedCashCents = (parts: { openingCents: number; cashPaymentsCents: number; cashInCents: number; cashOutCents: number }): number =>
-    parts.openingCents + parts.cashPaymentsCents + parts.cashInCents - parts.cashOutCents;
+// (Whish never changes the drawer. A cash refund of a return is taken off: it came out of this drawer.)
+export const expectedCashCents = (parts: { openingCents: number; cashPaymentsCents: number; cashInCents: number; cashOutCents: number; cashRefundsCents?: number }): number =>
+    parts.openingCents + parts.cashPaymentsCents + parts.cashInCents - parts.cashOutCents - (parts.cashRefundsCents ?? 0);
 
 // closed on another day than it was opened (Beirut): flagged as a late closing, never closed by itself
 export const isLateClosing = (openedAt: Date, closedAt: Date): boolean => businessDateOf(openedAt) !== businessDateOf(closedAt);

@@ -232,3 +232,34 @@ export class CostController {
     setCost = async (req: Request, res: Response) => { res.status(200).json(await this.costs.set(req.params.id as string, req.body, getAuth(req))); };
     getProfit = async (req: Request, res: Response) => { res.status(200).json(await this.profit.execute({ branchId: textParam(req, 'branchId'), from: textParam(req, 'from'), to: textParam(req, 'to') }, getAuth(req))); };
 }
+
+
+import { LinkExchangeUsecase, ApproveReturnUsecase, FindReturnableSaleUsecase, GetReturnUsecase, HandbackReturnUsecase, ListReturnsUsecase, PayRefundUsecase, ReceiveReturnUsecase, RejectReturnUsecase, ReleaseReturnUsecase, TakeCustodyUsecase } from '../usecases/returns/ReturnUsecases';
+
+export class ReturnController {
+    constructor(
+        private readonly find: FindReturnableSaleUsecase, private readonly receive: ReceiveReturnUsecase, private readonly custody: TakeCustodyUsecase, private readonly approve: ApproveReturnUsecase,
+        private readonly reject: RejectReturnUsecase, private readonly handback: HandbackReturnUsecase, private readonly release: ReleaseReturnUsecase, private readonly refund: PayRefundUsecase,
+        private readonly get: GetReturnUsecase, private readonly list: ListReturnsUsecase, private readonly exchange: LinkExchangeUsecase,
+    ) {}
+
+    private reply(res: Response, result: { view: unknown; replayed: boolean }, created: number) {
+        if (result.replayed) res.setHeader('Idempotent-Replay', 'true');
+        res.status(created).json(result.view);
+    }
+    eligible = async (req: Request, res: Response) => { res.status(200).json(await this.find.execute(textParam(req, 'sale'), getAuth(req))); };
+    receiveReturn = async (req: Request, res: Response) => this.reply(res, await this.receive.execute(req.body, req.header('Idempotency-Key'), getAuth(req)), 201);
+    takeCustody = async (req: Request, res: Response) => { res.status(200).json(await this.custody.execute(req.params.id as string, getAuth(req))); };
+    approveReturn = async (req: Request, res: Response) => this.reply(res, await this.approve.execute(req.params.id as string, req.body, req.header('Idempotency-Key'), getAuth(req)), 200);
+    rejectReturn = async (req: Request, res: Response) => { res.status(200).json(await this.reject.execute(req.params.id as string, req.body, getAuth(req))); };
+    handbackReturn = async (req: Request, res: Response) => { res.status(200).json(await this.handback.execute(req.params.id as string, req.body, getAuth(req))); };
+    releaseReturn = async (req: Request, res: Response) => this.reply(res, await this.release.execute(req.params.id as string, req.body, req.header('Idempotency-Key'), getAuth(req)), 200);
+    payRefund = async (req: Request, res: Response) => this.reply(res, await this.refund.execute(req.params.id as string, req.body, req.header('Idempotency-Key'), getAuth(req)), 201);
+    linkExchange = async (req: Request, res: Response) => { res.status(200).json(await this.exchange.execute(req.params.id as string, req.body, getAuth(req))); };
+    getReturn = async (req: Request, res: Response) => { res.status(200).json(await this.get.execute(req.params.id as string, getAuth(req))); };
+    listReturns = async (req: Request, res: Response) => {
+        const { items, total } = await this.list.execute({ branchId: textParam(req, 'branchId'), saleId: textParam(req, 'saleId'), status: textParam(req, 'status'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') }, getAuth(req));
+        res.setHeader('X-Total-Count', String(total));
+        res.status(200).json(items);
+    };
+}

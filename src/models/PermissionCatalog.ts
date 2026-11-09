@@ -13,6 +13,7 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
     'adjustments.create': { label: 'Manage stock', description: 'Opening stock, stock adjustments, minimum levels, "what to send" suggestions and the movement history.' },
     'reports.financial': { label: 'See sales reports', description: 'Sales per branch and per day, best sellers.' },
     'users.administer': { label: 'Manage users', description: 'Create users and change their roles and permissions. Only admins have it: it cannot be granted.' },
+    'returns.refund': { label: 'Pay refunds', description: 'Pay the refund of a return a manager approved, in cash or by Whish.' },
     'cash.open': { label: 'Open the cash drawer', description: 'Open a cash session at their branch with the counted opening cash.' },
     'cash.accept': { label: 'Take over the drawer', description: 'Accept responsibility for the drawer in a counted handover.' },
     'cash.close': { label: 'Close the cash drawer', description: 'Count the cash and close the session, with the difference explained.' },
