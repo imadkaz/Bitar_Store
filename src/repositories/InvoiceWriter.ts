@@ -85,9 +85,10 @@ export class InvoiceWriter implements IInvoiceWriter {
 
             // what leaves is priced at what the warehouse paid for it (the average cost kept at the warehouse), whoever sends it
             const lines = await tx.$queryRaw<{ sku_id: string; sku_code: string; style_name: string; size: string; color: string; quantity: number; price: string | null; currency: string }[]>`
-                SELECT tl.sku_id, k.sku_code, st.name AS style_name, k.size, k.color, tl.dispatched_qty AS quantity, sc.avg_unit_cost::text AS price, k.currency
+                SELECT tl.sku_id, k.sku_code, st.name AS style_name, k.size, k.color, tl.dispatched_qty AS quantity, COALESCE(sc.avg_unit_cost, cc.unit_cost)::text AS price, k.currency
                 FROM transfer_lines tl JOIN skus k ON k.id = tl.sku_id JOIN styles st ON st.id = k.style_id
                 LEFT JOIN stock_costs sc ON sc.sku_id = tl.sku_id AND sc.branch_id = ${warehouse.id}::uuid
+                LEFT JOIN catalog_costs cc ON cc.sku_id = tl.sku_id
                 WHERE tl.transfer_id = ${transferId}::uuid AND tl.dispatched_qty > 0 ORDER BY k.sku_code`;
             if (lines.length === 0) throw new ConflictError('Nothing was sent in this transfer');
             const currency = lines[0].currency;
@@ -109,8 +110,8 @@ export class InvoiceWriter implements IInvoiceWriter {
 
     async createFromSale(saleId: string, actorId: string, extra: { customerName: string | null; customerPhone: string | null; note: string | null }, authorize: (branchId: string) => void): Promise<string> {
         return this.run(async (tx) => {
-            const sales = await tx.$queryRaw<{ id: string; reference: string; status: string; branch_id: string; branch_name: string; currency: string; subtotal: string; discount: string; total: string }[]>`
-                SELECT s.id, s.reference, s.status, s.branch_id, b.name AS branch_name, s.currency, s.subtotal_standard::text AS subtotal, s.total_discount::text AS discount, s.total::text AS total
+            const sales = await tx.$queryRaw<{ id: string; reference: string; status: string; branch_id: string; branch_name: string; currency: string; subtotal: string; discount: string; total: string; exchange_rate: number | null; total_lbp: string | null }[]>`
+                SELECT s.id, s.reference, s.status, s.branch_id, b.name AS branch_name, s.currency, s.subtotal_standard::text AS subtotal, s.total_discount::text AS discount, s.total::text AS total, s.exchange_rate, s.total_lbp::text AS total_lbp
                 FROM sales s JOIN branches b ON b.id = s.branch_id WHERE s.id = ${saleId}::uuid FOR SHARE OF s`;
             if (sales.length === 0) throw new NotFoundError('Sale not found');
             const sale = sales[0];
@@ -127,6 +128,7 @@ export class InvoiceWriter implements IInvoiceWriter {
                 data: {
                     kind: 'b2c', status: 'draft', saleId, issuerBranchId: sale.branch_id, issuerName: sale.branch_name, recipientName: extra.customerName, recipientPhone: extra.customerPhone,
                     currency: sale.currency.trim(), subtotal: sale.subtotal, discountTotal: sale.discount, total: sale.total, note: extra.note, issuedBy: actorId,
+                    exchangeRate: sale.exchange_rate, totalLbp: sale.total_lbp === null ? null : BigInt(sale.total_lbp),
                     lines: { create: lines.map((l) => ({ lineNo: l.line_no, skuId: l.sku_id, skuCode: l.sku_code, description: `${l.style_name}, ${l.size}, ${l.color}`, quantity: l.quantity, unitPrice: l.unit_price, discountAmount: formatCents(cents(l.standard_total) - cents(l.line_total)), lineTotal: l.line_total, priceSource: 'sale' })) },
                 },
             });

@@ -70,6 +70,8 @@ import { LocationRepository } from '../repositories/LocationRepository';
 import { SupplierRepository } from '../repositories/SupplierRepository';
 import { SettingsRepository } from '../repositories/SettingsRepository';
 import { CashSessionRepository } from '../repositories/CashSessionRepository';
+import { GetProfitUsecase, SkuCostUsecases } from '../usecases/costs/CostUsecases';
+import { parseDateRange, resolveBranchScope } from '../usecases/insight/scope';
 import { AddCashMovementUsecase, CloseCashSessionUsecase, CorrectCashSessionUsecase, GetCashSessionUsecase, GetOpenCashSessionUsecase, HandoverCashSessionUsecase, ListCashSessionsUsecase, OpenCashSessionUsecase, ReviewCashSessionUsecase } from '../usecases/cash/CashSessionUsecases';
 import { GetSettingsUsecase, UpdateSettingsUsecase } from '../usecases/settings/SettingsUsecases';
 import { CreateSupplierUsecase, GetSupplierUsecase, ListSuppliersUsecase, UpdateSupplierUsecase } from '../usecases/suppliers/SupplierUsecases';
@@ -78,12 +80,12 @@ import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { CashSessionController, SettingsController, SupplierController, AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { CostController, CashSessionController, SettingsController, SupplierController, AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
 import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, ListPlacesUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { CashSessionRoutes, SettingsRoutes, SupplierRoutes, AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, InvoiceRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { CostRoutes, CashSessionRoutes, SettingsRoutes, SupplierRoutes, AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, InvoiceRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
 import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
@@ -221,6 +223,10 @@ const adjustmentController = new AdjustmentController(
     new ListAdjustmentsUsecase(branchRepository, adjustmentRepository),
 );
 
+const costController = new CostController(
+    new SkuCostUsecases(prisma),
+    new GetProfitUsecase(prisma, async (auth, branchId) => (await resolveBranchScope(auth, branchId, branchRepository, { onlyBranches: true })).map((b) => b.getId()), (from, to) => parseDateRange(from, to, new Date())),
+);
 const cashSessionRepository = new CashSessionRepository(prisma);
 const cashSessionController = new CashSessionController(
     new OpenCashSessionUsecase(cashSessionRepository, branchRepository), new AddCashMovementUsecase(cashSessionRepository), new HandoverCashSessionUsecase(cashSessionRepository), new CloseCashSessionUsecase(cashSessionRepository),
@@ -318,6 +324,7 @@ routes.use('/goods-receipts', GoodsReceiptRoutes(goodsReceiptController, authent
 routes.use('/suppliers', SupplierRoutes(supplierController, authenticate));
 routes.use('/settings', SettingsRoutes(settingsController, authenticate));
 routes.use('/cash-sessions', CashSessionRoutes(cashSessionController, authenticate));
+routes.use('/costs', CostRoutes(costController, authenticate));
 routes.use('/invoices', InvoiceRoutes(invoiceController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));

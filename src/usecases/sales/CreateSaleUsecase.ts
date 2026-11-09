@@ -46,6 +46,7 @@ async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): 
         const businessDate = businessDateOf(this.now());
         let shortages: StockShortage[] = [];
         let cashSessionId: string | null = null;
+        let fx: { rate: number; step: number } | null = null;
 
         // 2) the sale itself: ONE transaction. Either everything below happens, or nothing does.
         let saleId: string;
@@ -71,6 +72,7 @@ async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): 
                     throw new ValidationError('All the lines of a sale must be in the same currency');
                 }
 
+                fx = await tx.fxSettings();                                  // the rate of the day: read before the sale is built, because the pounds are computed from it
                 const sale = Sale.create({
                     id: randomUUID(),
                     branchId: request.branchId,
@@ -82,6 +84,7 @@ async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): 
                     businessDate,
                     lines: toLineInputs(request, (skuId) => found.get(skuId)!.priceCents, actorId),
                     payments: request.payments,
+                    fx,
                 });
 
                 // the drawer: every sale belongs to the open cash session of its branch (and cannot be made without one when the managers require it)

@@ -222,3 +222,13 @@ export class CashSessionController {
         res.status(200).json(items);
     };
 }
+
+
+import { GetProfitUsecase, SkuCostUsecases } from '../usecases/costs/CostUsecases';
+
+export class CostController {
+    constructor(private readonly costs: SkuCostUsecases, private readonly profit: GetProfitUsecase) {}
+    getCost = async (req: Request, res: Response) => { res.status(200).json(await this.costs.get(req.params.id as string, getAuth(req))); };
+    setCost = async (req: Request, res: Response) => { res.status(200).json(await this.costs.set(req.params.id as string, req.body, getAuth(req))); };
+    getProfit = async (req: Request, res: Response) => { res.status(200).json(await this.profit.execute({ branchId: textParam(req, 'branchId'), from: textParam(req, 'from'), to: textParam(req, 'to') }, getAuth(req))); };
+}

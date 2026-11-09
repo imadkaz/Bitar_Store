@@ -17,6 +17,11 @@ export interface SalePaymentView {
     tenderedCents: number | null;
     whishReference: string | null;
     receivedBy: string;
+    currency: 'USD' | 'LBP';
+    lbpAmount: number | null;          // an LBP payment: the pounds received
+    exchangeRate: number | null;       // the rate used for the pounds of this payment or of its change
+    changeLbpCents: number;            // the part of the change (in dollars) given back in pounds ...
+    changeLbp: number | null;          // ... and those pounds
 }
 
 export interface SaleView {
@@ -35,6 +40,8 @@ export interface SaleView {
     soldAt: Date;
     businessDate: string;
     note: string | null;
+    exchangeRate: number | null;       // the rate of the day of the sale, null when none was set
+    totalLbp: number | null;           // the total in pounds at that rate, rounded to the step
     lines: SaleLineView[];
     payments: SalePaymentView[];
 }

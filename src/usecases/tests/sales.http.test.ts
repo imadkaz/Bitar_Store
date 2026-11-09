@@ -85,8 +85,8 @@ describe.skipIf(!disposable)('sales (real database)', () => {
             expect(res.body.reference).toMatch(/^S-\d{8}$/);
             expect(res.body.lines).toEqual([expect.objectContaining({ lineNo: 1, skuId, quantity: 1, unitPrice: '45.00', discount: null, lineTotal: '45.00', size: expect.any(String), styleName: 'Sales Test Dress' })]);
             expect(res.body.payments).toEqual([
-                { method: 'cash', amount: '20.00', tendered: '50.00', change: '30.00', reference: null },
-                { method: 'whish', amount: '25.00', tendered: null, change: null, reference: expect.stringMatching(/^WH-/) },
+                { method: 'cash', amount: '20.00', tendered: '50.00', change: '30.00', reference: null, currency: 'USD', lbpAmount: null, exchangeRate: null, changeUsd: '30.00', changeLbpUsd: null, changeLbp: null },
+                { method: 'whish', amount: '25.00', tendered: null, change: null, reference: expect.stringMatching(/^WH-/), currency: 'USD', lbpAmount: null, exchangeRate: null, changeUsd: null, changeLbpUsd: null, changeLbp: null },
             ]);
 
             expect(await quantityOf(skuId)).toBe(7);

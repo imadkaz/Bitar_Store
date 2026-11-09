@@ -124,15 +124,21 @@ export function renderInvoicePdf(invoice: InvoiceView): Promise<Buffer> {
         doc.moveTo(labelX, y - 2).lineTo(right, y - 2).strokeColor(LINE).stroke();
         y += 4;
         row('TOTAL', money(invoice.total, invoice.currency), true);
+        if (invoice.totalLbp != null && invoice.exchangeRate != null) {
+            text(`In pounds (1 USD = ${invoice.exchangeRate.toLocaleString('en-US')} LBP)`, labelX, y, { width: 150, color: MUTED });
+            text(`${invoice.totalLbp.toLocaleString('en-US')} LBP`, labelX, y, { width: valueW, align: 'right' });
+            y += 16;
+        }
 
         if (invoice.payments.length > 0) {
             y += 6;
             text('PAID BY', labelX, y, { size: 8, color: MUTED });
             y += 12;
             for (const payment of invoice.payments) {
-                text(payment.method === 'whish' ? `Whish${payment.reference ? ` (${payment.reference})` : ''}` : 'Cash', labelX, y, { width: 150, color: MUTED });
-                text(money(payment.amount, invoice.currency), labelX, y, { width: valueW, align: 'right' });
+                text(payment.method === 'whish' ? `Whish${payment.reference ? ` (${payment.reference})` : ''}` : payment.currency === 'LBP' ? 'Cash in pounds' : 'Cash', labelX, y, { width: 150, color: MUTED });
+                text(payment.currency === 'LBP' && payment.lbpAmount != null ? `${payment.lbpAmount.toLocaleString('en-US')} LBP = ${money(payment.amount, invoice.currency)}` : money(payment.amount, invoice.currency), labelX, y, { width: valueW, align: 'right' });
                 y += 14;
+                if (payment.changeLbp) { text('Change given in pounds', labelX, y, { width: 150, color: MUTED }); text(`${payment.changeLbp.toLocaleString('en-US')} LBP`, labelX, y, { width: valueW, align: 'right' }); y += 14; }
             }
         }
         if (invoice.note) { y += 10; text(`Note: ${invoice.note}`, left, y, { size: 8.5, color: MUTED, width: 280 }); }

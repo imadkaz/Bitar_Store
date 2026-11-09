@@ -36,7 +36,7 @@ describe.skipIf(!disposable)('settings (real database)', () => {
         for (const who of [adminId, managerId, staffId]) {
             const res = await request(app).get('/settings').set(as(who));
             expect(res.status).toBe(200);
-            expect(res.body).toEqual({ exchangeRateUsdLbp: null, returnPeriodDays: 14, defaultReservationDays: 3, requireOpenCashSession: false });
+            expect(res.body).toEqual({ exchangeRateUsdLbp: null, returnPeriodDays: 14, defaultReservationDays: 3, requireOpenCashSession: false, lbpRoundingStep: 1000 });
         }
         expect((await request(app).get('/settings')).status).toBe(401);
     });
@@ -44,9 +44,9 @@ describe.skipIf(!disposable)('settings (real database)', () => {
     it('a manager changes only what is sent; the rest stays; it is remembered and audited with before and after', async () => {
         const first = await request(app).put('/settings').set(as(managerId)).send({ exchangeRateUsdLbp: 89500, returnPeriodDays: 30 });
         expect(first.status, JSON.stringify(first.body)).toBe(200);
-        expect(first.body).toEqual({ exchangeRateUsdLbp: 89500, returnPeriodDays: 30, defaultReservationDays: 3, requireOpenCashSession: false });
+        expect(first.body).toEqual({ exchangeRateUsdLbp: 89500, returnPeriodDays: 30, defaultReservationDays: 3, requireOpenCashSession: false, lbpRoundingStep: 1000 });
         const second = await request(app).put('/settings').set(as(adminId)).send({ requireOpenCashSession: true, exchangeRateUsdLbp: null });
-        expect(second.body).toEqual({ exchangeRateUsdLbp: null, returnPeriodDays: 30, defaultReservationDays: 3, requireOpenCashSession: true });
+        expect(second.body).toEqual({ exchangeRateUsdLbp: null, returnPeriodDays: 30, defaultReservationDays: 3, requireOpenCashSession: true, lbpRoundingStep: 1000 });
         expect((await request(app).get('/settings').set(as(staffId))).body).toEqual(second.body);          // what the till reads
         const audit = await request(app).get('/audit-events?entityType=settings').set(as(adminId));
         const changes = audit.body.filter((e: { action: string }) => e.action === 'settings.update').flatMap((e: { details: { changed: unknown[] } }) => e.details.changed);
@@ -66,7 +66,7 @@ describe.skipIf(!disposable)('settings (real database)', () => {
         expect((await request(app).put('/settings').set(as(staffId)).send({ returnPeriodDays: 7 })).status).toBe(403);
         expect((await request(app).put('/settings').send({ returnPeriodDays: 7 })).status).toBe(401);
         const bad: unknown[] = [{}, [], 'x', { colour: 'red' }, { returnPeriodDays: -1 }, { returnPeriodDays: 366 }, { returnPeriodDays: 1.5 }, { returnPeriodDays: '7' }, { exchangeRateUsdLbp: 0 }, { exchangeRateUsdLbp: 12.5 }, { exchangeRateUsdLbp: 10_000_001 },
-            { defaultReservationDays: 0 }, { defaultReservationDays: 61 }, { requireOpenCashSession: 'yes' }, { requireOpenCashSession: 1 }, { returnPeriodDays: 7, colour: 'red' }];
+            { defaultReservationDays: 0 }, { defaultReservationDays: 61 }, { requireOpenCashSession: 'yes' }, { requireOpenCashSession: 1 }, { returnPeriodDays: 7, colour: 'red' }, { lbpRoundingStep: 0 }, { lbpRoundingStep: 1_000_001 }, { lbpRoundingStep: 2.5 }];
         const before = (await request(app).get('/settings').set(as(adminId))).body;
         for (const body of bad) expect((await request(app).put('/settings').set(as(adminId)).send(body as object)).status, JSON.stringify(body)).toBe(400);
         expect((await request(app).get('/settings').set(as(adminId))).body).toEqual(before);
