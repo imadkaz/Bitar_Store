@@ -276,7 +276,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
         it('the screen gets every permission with its words, and what each role has by default', async () => {
             const res = await request(app).get('/permissions').set(as(adminId));
             expect(res.status).toBe(200);
-            expect(res.body.permissions).toHaveLength(13);                       // the nine of before and the four of the cash drawer
+            expect(res.body.permissions).toHaveLength(14);                       // the nine of before, the four of the cash drawer and the refunds
             for (const key of ['cash.open', 'cash.accept', 'cash.close', 'cash.move']) expect(res.body.permissions.find((p: { key: string }) => p.key === key)).toMatchObject({ grantable: true });
             expect(res.body.roles.employee).not.toEqual(expect.arrayContaining(['cash.open']));          // an employee gets none of them by default: they are granted
             expect(res.body.roles.manager).toEqual(expect.arrayContaining(['cash.open', 'cash.accept', 'cash.close', 'cash.move']));

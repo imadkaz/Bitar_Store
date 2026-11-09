@@ -14,7 +14,7 @@ export interface CashSessionView {
     openingNote: string | null;
     responsible: Person;                      // who has the drawer now
     // expectedCash is ONE total in dollars (what was paid in pounds is counted at its dollar value). paidInLbp is the part of cashPayments that came in pounds; lbpReceived and lbpChangeGiven are the pound notes that entered and left the drawer
-    totals: { salesCount: number; salesTotal: string; cashPayments: string; whishPayments: string; paidInLbp: string; lbpReceived: number; lbpChangeGiven: number; cashIn: string; cashOut: string; expectedCash: string };
+    totals: { salesCount: number; salesTotal: string; cashPayments: string; whishPayments: string; paidInLbp: string; lbpReceived: number; lbpChangeGiven: number; cashIn: string; cashOut: string; cashRefunds: string; expectedCash: string };
     byUser: { user: Person; salesCount: number; total: string; cash: string; whish: string }[];
     movements: { id: string; direction: 'in' | 'out'; amount: string; reason: string; by: Person; at: Date }[];
     handovers: { id: string; from: Person; to: Person; countedCash: string; expectedCash: string; difference: string; note: string | null; at: Date }[];

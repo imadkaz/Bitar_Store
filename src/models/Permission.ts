@@ -12,6 +12,7 @@ export const PERMISSIONS = [
     'adjustments.create',
     'reports.financial',
     'users.administer',
+    'returns.refund',   // pay a refund of an approved return
     'cash.open',        // open a cash session
     'cash.accept',      // take over the drawer in a counted handover
     'cash.close',       // count and close the session
@@ -32,7 +33,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     [UserRole.MANAGER]: [
         'sales.create', 'transfers.receive', 'discounts.apply', 'catalog.create',
         'transfers.dispatch', 'returns.create', 'adjustments.create', 'reports.financial',
-        'cash.open', 'cash.accept', 'cash.close', 'cash.move',
+        'cash.open', 'cash.accept', 'cash.close', 'cash.move', 'returns.refund',
     ],
     [UserRole.ADMIN]: [...PERMISSIONS],
 };

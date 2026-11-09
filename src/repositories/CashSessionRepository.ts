@@ -39,6 +39,7 @@ async function loadSession(q: Q, id: string): Promise<CashSessionView | null> {
     const lbp = await q.$queryRaw<{ paid: string; received: string; change: string }[]>`
         SELECT COALESCE(SUM(p.amount) FILTER (WHERE p.currency = 'LBP'), 0)::numeric(14,2)::text AS paid, COALESCE(SUM(p.lbp_amount), 0)::text AS received, COALESCE(SUM(p.change_lbp), 0)::text AS change
         FROM sale_payments p JOIN sales x ON x.id = p.sale_id WHERE x.cash_session_id = ${id}::uuid`;
+    const refunds = await q.$queryRaw<{ total: string }[]>`SELECT COALESCE(SUM(amount), 0)::numeric(14,2)::text AS total FROM return_refund_payments WHERE cash_session_id = ${id}::uuid AND method = 'cash'`;
     const byUser = await q.$queryRaw<{ sold_by: string; name: string | null; n: number; total: string; cash: string; whish: string }[]>`
         SELECT x.sold_by, u.full_name AS name, COUNT(*)::int AS n, SUM(x.total)::text AS total,
                COALESCE(SUM((SELECT SUM(p.amount) FROM sale_payments p WHERE p.sale_id = x.id AND p.method = 'cash')), 0)::numeric(14,2)::text AS cash,
@@ -59,20 +60,21 @@ async function loadSession(q: Q, id: string): Promise<CashSessionView | null> {
     const whishPayments = cents(paid.find((p) => p.method === 'whish')?.amount ?? '0');
     const cashIn = movements.filter((m) => m.direction === 'in').reduce((n, m) => n + cents(m.amount), 0);
     const cashOut = movements.filter((m) => m.direction === 'out').reduce((n, m) => n + cents(m.amount), 0);
-    const expected = expectedCashCents({ openingCents: cents(s.opening_cash), cashPaymentsCents: cashPayments, cashInCents: cashIn, cashOutCents: cashOut });
+    const cashRefunds = cents(refunds[0].total);
+    const expected = expectedCashCents({ openingCents: cents(s.opening_cash), cashPaymentsCents: cashPayments, cashInCents: cashIn, cashOutCents: cashOut, cashRefundsCents: cashRefunds });
 
     // the closing with the manager's corrections applied (the latest correction of each field wins; the closing itself is never changed)
     const latest = (field: CorrectionField, original: string | null) => cents(corrections.filter((c) => c.field === field).at(-1)?.value_after ?? original);
     let effective: CashSessionView['effective'] = null;
     if (s.status === 'closed') {
         const opening = latest('opening_cash', s.opening_cash), counted = latest('counted_cash', s.counted_cash), removed = latest('cash_removed', s.cash_removed);
-        const expectedNow = expectedCashCents({ openingCents: opening, cashPaymentsCents: cashPayments, cashInCents: cashIn, cashOutCents: cashOut });
+        const expectedNow = expectedCashCents({ openingCents: opening, cashPaymentsCents: cashPayments, cashInCents: cashIn, cashOutCents: cashOut, cashRefundsCents: cashRefunds });
         effective = { openingCash: formatCents(opening), countedCash: formatCents(counted), cashRemoved: formatCents(removed), cashLeft: formatCents(counted - removed), expectedCash: formatCents(expectedNow), difference: formatCents(counted - expectedNow) };
     }
     return {
         id: s.id, reference: s.reference, branch: { id: s.branch_id, code: s.branch_code, name: s.branch_name }, status: s.status, openedBy: person(s.opened_by, s.opener), openedAt: s.opened_at,
         openingCash: s.opening_cash, expectedOpening: s.expected_opening, openingNote: s.opening_note, responsible: person(s.responsible_user_id, s.responsible),
-        totals: { salesCount: sales[0].n, salesTotal: sales[0].total, cashPayments: formatCents(cashPayments), whishPayments: formatCents(whishPayments), paidInLbp: lbp[0].paid, lbpReceived: Number(lbp[0].received), lbpChangeGiven: Number(lbp[0].change), cashIn: formatCents(cashIn), cashOut: formatCents(cashOut), expectedCash: formatCents(expected) },
+        totals: { salesCount: sales[0].n, salesTotal: sales[0].total, cashPayments: formatCents(cashPayments), whishPayments: formatCents(whishPayments), paidInLbp: lbp[0].paid, lbpReceived: Number(lbp[0].received), lbpChangeGiven: Number(lbp[0].change), cashIn: formatCents(cashIn), cashOut: formatCents(cashOut), cashRefunds: formatCents(cashRefunds), expectedCash: formatCents(expected) },
         byUser: byUser.map((u) => ({ user: person(u.sold_by, u.name), salesCount: u.n, total: u.total, cash: u.cash, whish: u.whish })),
         movements: movements.map((m) => ({ id: m.id, direction: m.direction, amount: m.amount, reason: m.reason, by: person(m.created_by, m.who), at: m.created_at })),
         handovers: handovers.map((h) => ({ id: h.id, from: person(h.outgoing_user_id, h.fromname), to: person(h.incoming_user_id, h.toname), countedCash: h.counted_cash, expectedCash: h.expected_cash, difference: h.difference, note: h.note, at: h.created_at })),
