@@ -1,4 +1,5 @@
-export type InvoiceKind = 'b2b' | 'b2c';
+// b2b: the warehouse invoices a branch · b2b_return: a branch returns goods to the warehouse (the return invoice) · b2c: the invoice of a sale
+export type InvoiceKind = 'b2b' | 'b2b_return' | 'b2c';
 export type InvoiceStatus = 'draft' | 'final' | 'void';
 
 export interface InvoiceLineView {

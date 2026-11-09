@@ -294,6 +294,7 @@ model AuditEvent {
 // (the tables transfers and transfer_lines already exist since migration 001: NO new migration for transfers)
 
 model Transfer {
+  expectedAt DateTime? @map("expected_at") @db.Timestamptz(6)
   id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reference           String         @default(dbgenerated("('T-'::text || lpad((nextval('transfer_ref_seq'::regclass))::text, 8, '0'::text))"))
   sourceBranchId      String         @map("source_branch_id") @db.Uuid

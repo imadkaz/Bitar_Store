@@ -35,30 +35,59 @@ export class InvoiceWriter implements IInvoiceWriter {
         return rows[0];
     }
 
-    async createFromTransfer(transferId: string, actorId: string, note: string | null, authorize: (sourceBranchId: string, destinationBranchId: string) => void): Promise<string> {
+    // which invoices a transfer needs, from where it goes and where it comes from
+    private invoiceKindsFor(sourceKind: string, destinationKind: string): ('b2b' | 'b2b_return')[] {
+        if (sourceKind === 'warehouse') return ['b2b'];
+        if (destinationKind === 'warehouse') return ['b2b_return'];
+        return ['b2b_return', 'b2b'];          // branch to branch: the sending branch returns to the warehouse, the warehouse sells to the receiving branch
+    }
+
+    async raiseDraftsForTransfer(transferId: string, actorId: string): Promise<string[]> {
+        const rows = await this.prisma.$queryRaw<{ source_kind: string; destination_kind: string }[]>`
+            SELECT sb.kind AS source_kind, db.kind AS destination_kind FROM transfers t JOIN branches sb ON sb.id = t.source_branch_id JOIN branches db ON db.id = t.destination_branch_id WHERE t.id = ${transferId}::uuid`;
+        if (rows.length === 0) return [];
+        const raised: string[] = [];
+        for (const kind of this.invoiceKindsFor(rows[0].source_kind, rows[0].destination_kind)) {
+            try { raised.push(await this.createFromTransfer(transferId, actorId, null, () => undefined, kind)); } catch { /* it exists already, or it can be raised by hand */ }
+        }
+        return raised;
+    }
+
+    async createFromTransfer(transferId: string, actorId: string, note: string | null, authorize: (sourceBranchId: string, destinationBranchId: string, issuerBranchId: string) => void, invoiceKind: 'b2b' | 'b2b_return' | null = null): Promise<string> {
         return this.run(async (tx) => {
-            const transfers = await tx.$queryRaw<{ id: string; reference: string; status: string; source_branch_id: string; destination_branch_id: string; source_name: string; source_kind: string; destination_name: string }[]>`
-                SELECT t.id, t.reference, t.status, t.source_branch_id, t.destination_branch_id, sb.name AS source_name, sb.kind AS source_kind, db.name AS destination_name
+            const transfers = await tx.$queryRaw<{ id: string; reference: string; status: string; source_branch_id: string; destination_branch_id: string; source_name: string; source_kind: string; destination_name: string; destination_kind: string }[]>`
+                SELECT t.id, t.reference, t.status, t.source_branch_id, t.destination_branch_id, sb.name AS source_name, sb.kind AS source_kind, db.name AS destination_name, db.kind AS destination_kind
                 FROM transfers t JOIN branches sb ON sb.id = t.source_branch_id JOIN branches db ON db.id = t.destination_branch_id
                 WHERE t.id = ${transferId}::uuid FOR SHARE OF t`;
             if (transfers.length === 0) throw new NotFoundError('Transfer not found');
             const transfer = transfers[0];
-            authorize(transfer.source_branch_id, transfer.destination_branch_id);
-            if (transfer.status === 'draft' || transfer.status === 'cancelled') throw new ConflictError(`A ${transfer.status} transfer has nothing sent: make the invoice after it is sent`);
-            if (transfer.source_kind !== 'warehouse') throw new ConflictError('A supply invoice is for a transfer that leaves the warehouse');
+            const allowed = this.invoiceKindsFor(transfer.source_kind, transfer.destination_kind);
+            const kind = invoiceKind ?? allowed[0];
+            if (!allowed.includes(kind)) throw new ConflictError(`A transfer from a ${transfer.source_kind} to a ${transfer.destination_kind} has no ${kind === 'b2b' ? 'supply' : 'return'} invoice`);
 
-            const existing = await tx.$queryRaw<{ id: string; status: string; reference: string | null }[]>`SELECT id, status, reference FROM invoices WHERE transfer_id = ${transferId}::uuid AND status <> 'void'`;
+            // the warehouse is on one side of the invoice: it issues the supply invoice, and receives the return invoice
+            const warehouse = transfer.source_kind === 'warehouse' ? { id: transfer.source_branch_id, name: transfer.source_name }
+                : transfer.destination_kind === 'warehouse' ? { id: transfer.destination_branch_id, name: transfer.destination_name }
+                : (await tx.$queryRaw<{ id: string; name: string }[]>`SELECT id, name FROM branches WHERE kind = 'warehouse'`)[0];
+            if (!warehouse) throw new ConflictError('There is no warehouse yet');
+            const issuer = kind === 'b2b' ? warehouse : { id: transfer.source_branch_id, name: transfer.source_name };
+            const recipient = kind === 'b2b' ? { id: transfer.destination_branch_id, name: transfer.destination_name } : warehouse;
+            authorize(transfer.source_branch_id, transfer.destination_branch_id, issuer.id);
+            if (transfer.status === 'draft' || transfer.status === 'cancelled') throw new ConflictError(`A ${transfer.status} transfer has nothing sent: make the invoice after it is sent`);
+
+            const existing = await tx.$queryRaw<{ id: string; status: string; reference: string | null }[]>`SELECT id, status, reference FROM invoices WHERE transfer_id = ${transferId}::uuid AND kind = ${kind} AND status <> 'void'`;
             if (existing.length > 0) {
                 const live = existing[0];
                 throw new ConflictError(live.status === 'draft'
-                    ? `This transfer already has a draft invoice (id ${live.id}): edit it, finalize it or delete it`
+                    ? `This transfer already has a draft ${kind === 'b2b' ? 'supply' : 'return'} invoice (id ${live.id}): edit it, finalize it or delete it`
                     : `This transfer already has the invoice ${live.reference} (id ${live.id}). Void it first to make another`);
             }
 
+            // what leaves is priced at what the warehouse paid for it (the average cost kept at the warehouse), whoever sends it
             const lines = await tx.$queryRaw<{ sku_id: string; sku_code: string; style_name: string; size: string; color: string; quantity: number; price: string | null; currency: string }[]>`
                 SELECT tl.sku_id, k.sku_code, st.name AS style_name, k.size, k.color, tl.dispatched_qty AS quantity, sc.avg_unit_cost::text AS price, k.currency
                 FROM transfer_lines tl JOIN skus k ON k.id = tl.sku_id JOIN styles st ON st.id = k.style_id
-                LEFT JOIN stock_costs sc ON sc.sku_id = tl.sku_id AND sc.branch_id = ${transfer.source_branch_id}::uuid
+                LEFT JOIN stock_costs sc ON sc.sku_id = tl.sku_id AND sc.branch_id = ${warehouse.id}::uuid
                 WHERE tl.transfer_id = ${transferId}::uuid AND tl.dispatched_qty > 0 ORDER BY k.sku_code`;
             if (lines.length === 0) throw new ConflictError('Nothing was sent in this transfer');
             const currency = lines[0].currency;
@@ -68,12 +97,12 @@ export class InvoiceWriter implements IInvoiceWriter {
             const subtotal = prepared.reduce((sum, l) => sum + lineTotalCents(l.quantity, l.unitCents), 0);
             const created = await tx.invoice.create({
                 data: {
-                    kind: 'b2b', status: 'draft', transferId, issuerBranchId: transfer.source_branch_id, issuerName: transfer.source_name, recipientBranchId: transfer.destination_branch_id,
-                    recipientName: transfer.destination_name, currency, subtotal: formatCents(subtotal), discountTotal: '0.00', total: formatCents(subtotal), note, issuedBy: actorId,
+                    kind, status: 'draft', transferId, issuerBranchId: issuer.id, issuerName: issuer.name, recipientBranchId: recipient.id,
+                    recipientName: recipient.name, currency, subtotal: formatCents(subtotal), discountTotal: '0.00', total: formatCents(subtotal), note, issuedBy: actorId,
                     lines: { create: prepared.map((l) => ({ lineNo: l.lineNo, skuId: l.skuId, skuCode: l.skuCode, description: l.description, quantity: l.quantity, unitPrice: formatCents(l.unitCents), discountAmount: '0.00', lineTotal: formatCents(lineTotalCents(l.quantity, l.unitCents)), priceSource: l.priceSource })) },
                 },
             });
-            await writeAudit(tx, { actorId, action: 'invoice.create', entityType: 'invoice', entityId: created.id, branchId: transfer.source_branch_id, details: { kind: 'b2b', transfer: transfer.reference, lines: prepared.length, total: formatCents(subtotal), missingCost: prepared.filter((l) => l.priceSource === 'missing').length } });
+            await writeAudit(tx, { actorId, action: 'invoice.create', entityType: 'invoice', entityId: created.id, branchId: issuer.id, details: { kind, transfer: transfer.reference, lines: prepared.length, total: formatCents(subtotal), missingCost: prepared.filter((l) => l.priceSource === 'missing').length } });
             return created.id;
         });
     }
@@ -111,7 +140,7 @@ export class InvoiceWriter implements IInvoiceWriter {
     async updateDraft(invoiceId: string, actorId: string, request: UpdateInvoiceRequest, authorize: Authorize): Promise<string> {
         return this.run(async (tx) => {
             const invoice = await this.lock(tx, invoiceId, authorize);
-            if (invoice.kind !== 'b2b') throw new ConflictError('The invoice of a sale cannot be edited: void it and make it again');
+            if (invoice.kind === 'b2c') throw new ConflictError('The invoice of a sale cannot be edited: void it and make it again');
             if (invoice.status !== 'draft') throw new ConflictError(`Only a draft can be edited: this invoice is ${invoice.status}. Void it and make a new one`);
 
             const lines = await tx.$queryRaw<{ id: string; sku_id: string; sku_code: string; quantity: number; unit_price: string }[]>`SELECT id, sku_id, sku_code, quantity, unit_price::text AS unit_price FROM invoice_lines WHERE invoice_id = ${invoiceId}::uuid`;
@@ -140,7 +169,8 @@ export class InvoiceWriter implements IInvoiceWriter {
             const unpriced = await tx.$queryRaw<{ sku_code: string }[]>`SELECT sku_code FROM invoice_lines WHERE invoice_id = ${invoiceId}::uuid AND price_source = 'missing' ORDER BY line_no`;
             if (unpriced.length > 0) throw new ConflictError(`No cost is known for ${unpriced.map((l) => l.sku_code).join(', ')}: set the price of ${unpriced.length === 1 ? 'this line' : 'these lines'} before finalizing`);
             const rows = await tx.$queryRaw<{ reference: string }[]>`
-                UPDATE invoices SET status = 'final', reference = 'B2B-' || lpad(nextval('invoice_b2b_ref_seq')::text, 8, '0'), finalized_at = now(), finalized_by = ${actorId}::uuid
+                UPDATE invoices SET status = 'final', finalized_at = now(), finalized_by = ${actorId}::uuid,
+                    reference = CASE kind WHEN 'b2b_return' THEN 'B2BR-' || lpad(nextval('invoice_b2b_return_ref_seq')::text, 8, '0') ELSE 'B2B-' || lpad(nextval('invoice_b2b_ref_seq')::text, 8, '0') END
                 WHERE id = ${invoiceId}::uuid RETURNING reference`;
             await writeAudit(tx, { actorId, action: 'invoice.finalize', entityType: 'invoice', entityId: invoiceId, branchId: invoice.issuer_branch_id, details: { reference: rows[0].reference } });
             return invoiceId;

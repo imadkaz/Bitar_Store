@@ -20,7 +20,7 @@ export class TransferRepository implements ITransferRepository {
         const damagedBy = new Map<string, number>();
         for (const r of receiptRows) for (const l of receiptLines.filter((x) => x.receipt_id === r.id)) damagedBy.set(`${r.transfer_id}:${l.sku_id}`, (damagedBy.get(`${r.transfer_id}:${l.sku_id}`) ?? 0) + l.damaged_qty);
         const who = (id: string) => ({ id, name: users.get(id) ?? null });
-        const invoices = new Map((await this.prisma.invoice.findMany({ where: { transferId: { in: rows.map((t) => t.id) }, status: { not: 'void' } }, select: { id: true, transferId: true, reference: true, status: true, total: true } })).map((i) => [i.transferId, { id: i.id, reference: i.reference, status: i.status, total: i.total.toFixed(2) }]));
+        const invoices = new Map((await this.prisma.invoice.findMany({ where: { transferId: { in: rows.map((t) => t.id) }, status: { not: 'void' } }, select: { id: true, transferId: true, kind: true, reference: true, status: true, total: true } })).map((i) => [`${i.transferId}:${i.kind}`, { id: i.id, reference: i.reference, status: i.status, total: i.total.toFixed(2) }]));
 
         return rows.map((t) => ({
             id: t.id,
@@ -46,7 +46,9 @@ export class TransferRepository implements ITransferRepository {
                 id: x.id, at: x.received_at, by: { id: x.received_by, name: x.receiver }, note: x.note,
                 lines: receiptLines.filter((l) => l.receipt_id === x.id).map((l) => ({ skuId: l.sku_id, accepted: l.accepted_qty, damaged: l.damaged_qty })),
             })),
-            supplyInvoice: invoices.get(t.id) ?? null,
+            expectedAt: t.expectedAt ?? null,
+            supplyInvoice: invoices.get(`${t.id}:b2b`) ?? null,
+            returnInvoice: invoices.get(`${t.id}:b2b_return`) ?? null,
         }));
     }
 

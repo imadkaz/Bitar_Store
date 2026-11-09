@@ -19,7 +19,7 @@ export const mirrorBrackets = (word: string): string => word.replace(/[()[\]{}<>
 export const visualOrder = (text: string): string => (isRtl(text) ? text.split(' ').reverse().map(mirrorBrackets).join(' ') : text);
 
 const COMPANY = 'Bitar Fashion';
-const TITLE = { b2b: 'SUPPLY INVOICE', b2c: 'INVOICE' } as const;
+const TITLE = { b2b: 'SUPPLY INVOICE', b2b_return: 'RETURN INVOICE', b2c: 'INVOICE' } as const;
 const INK = '#1f2937', MUTED = '#6b7280', LINE = '#d1d5db', SOFT = '#f3f4f6', ACCENT = '#92400e', RED = '#b91c1c';
 
 const day = (date: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Beirut', day: '2-digit', month: 'short', year: 'numeric' }).format(date);
@@ -76,9 +76,9 @@ export function renderInvoicePdf(invoice: InvoiceView): Promise<Buffer> {
         doc.moveTo(left, 96).lineTo(right, 96).strokeColor(LINE).stroke();
 
         // from / to
-        text(invoice.kind === 'b2b' ? 'FROM' : 'ISSUED BY', left, 108, { size: 8, color: MUTED, width: 240 });
+        text(invoice.kind !== 'b2c' ? 'FROM' : 'ISSUED BY', left, 108, { size: 8, color: MUTED, width: 240 });
         text(invoice.issuer.name, left, 120, { size: 11, bold: true, width: 240 });
-        text(invoice.kind === 'b2b' ? 'TO' : 'CUSTOMER', left + 270, 108, { size: 8, color: MUTED, width: 240 });
+        text(invoice.kind !== 'b2c' ? 'TO' : 'CUSTOMER', left + 270, 108, { size: 8, color: MUTED, width: 240 });
         text(invoice.recipient.name ?? (invoice.kind === 'b2c' ? 'Walk-in customer' : '-'), left + 270, 120, { size: 11, bold: true, width: 240 });
         if (invoice.recipient.phone) text(invoice.recipient.phone, left + 270, 136, { color: MUTED, width: 240 });
         const source = invoice.transfer ? `Transfer ${invoice.transfer.reference}` : invoice.sale ? `Sale ${invoice.sale.reference}` : '';

@@ -168,7 +168,7 @@ describe.skipIf(!disposable)('invoices (real database)', () => {
             expect((await invoice(adminId, { transferId })).status).toBe(201);
         });
 
-        it('what is refused: a transfer not sent yet, a cancelled one, a return to the warehouse, a branch to branch, nothing sent', async () => {
+        it('what is refused: a transfer not sent yet, a cancelled one, a second invoice, the wrong kind, an unknown transfer', async () => {
             const a = await newSku('10.00');
             await stock(a.id, warehouseId, 10);
             const draftTransfer = (await request(app).post('/transfers').set(as(adminId)).set('Idempotency-Key', key()).send({ sourceBranchId: warehouseId, destinationBranchId: hamraId, lines: [{ skuId: a.id, quantity: 2 }] })).body.id;
@@ -178,9 +178,13 @@ describe.skipIf(!disposable)('invoices (real database)', () => {
             await stock(a.id, hamraId, 5);
             const back = (await request(app).post('/transfers').set(as(adminId)).set('Idempotency-Key', key()).send({ sourceBranchId: hamraId, destinationBranchId: warehouseId, lines: [{ skuId: a.id, quantity: 2 }] })).body.id;
             await request(app).post(`/transfers/${back}/dispatch`).set(as(adminId)).set('Idempotency-Key', key());
+            // a return to the warehouse has a RETURN invoice (raised by the dispatch), never a supply invoice
             const returned = await invoice(adminId, { transferId: back });
             expect(returned.status).toBe(409);
-            expect(returned.body.message).toMatch(/leaves the warehouse/);
+            expect(returned.body.message).toMatch(/already has a draft return invoice/);
+            const wrongKind = await invoice(adminId, { transferId: back, invoiceKind: 'b2b' });
+            expect(wrongKind.status).toBe(409);
+            expect(wrongKind.body.message).toMatch(/has no supply invoice/);
             const sideways = (await request(app).post('/transfers').set(as(adminId)).set('Idempotency-Key', key()).send({ sourceBranchId: hamraId, destinationBranchId: tripoliId, lines: [{ skuId: a.id, quantity: 1 }] })).body.id;
             await request(app).post(`/transfers/${sideways}/dispatch`).set(as(adminId)).set('Idempotency-Key', key());
             expect((await invoice(adminId, { transferId: sideways })).status).toBe(409);
@@ -493,7 +497,7 @@ describe.skipIf(!disposable)('dispatching raises the draft supply invoice by its
         expect((await request(app).get(`/transfers/${sent.id}`).set(as(hamraManagerId))).body.supplyInvoice).toMatchObject({ status: 'final' });
     });
 
-    it('a replay of the same dispatch raises nothing more; a dispatch that is not from the warehouse raises none', async () => {
+    it('a replay of the same dispatch raises nothing more; a dispatch to the warehouse raises the return invoice, not a supply invoice', async () => {
         const a = await newSku('45.00');
         await receive(a.id, 10, '20.00');
         const sent = await dispatch(warehouseId, hamraId, [{ skuId: a.id, quantity: 2 }]);
@@ -501,8 +505,11 @@ describe.skipIf(!disposable)('dispatching raises the draft supply invoice by its
         expect(replay.status).toBe(200);
         expect((await request(app).get(`/invoices?transferId=${sent.id}`).set(as(adminId))).body).toHaveLength(1);
         expect((await request(app).post(`/transfers/${sent.id}/receive`).set(as(adminId)).set('Idempotency-Key', key()).send({ lines: [{ skuId: a.id, accepted: 2 }] })).status).toBe(200);          // Hamra now has 2
-        const back = await dispatch(hamraId, warehouseId, [{ skuId: a.id, quantity: 1 }]);                      // a return to the warehouse: not a supply
-        expect((await request(app).get(`/invoices?transferId=${back.id}`).set(as(adminId))).body).toEqual([]);
-        expect((await request(app).get(`/transfers/${back.id}`).set(as(adminId))).body.supplyInvoice).toBeNull();
+        const back = await dispatch(hamraId, warehouseId, [{ skuId: a.id, quantity: 1 }]);                      // a return to the warehouse: not a supply, it has a RETURN invoice
+        const returns = (await request(app).get(`/invoices?transferId=${back.id}`).set(as(adminId))).body;
+        expect(returns.map((i: { kind: string }) => i.kind)).toEqual(['b2b_return']);
+        const backTransfer = (await request(app).get(`/transfers/${back.id}`).set(as(adminId))).body;
+        expect(backTransfer.supplyInvoice).toBeNull();
+        expect(backTransfer.returnInvoice).toMatchObject({ id: returns[0].id, status: 'draft' });
     });
 });

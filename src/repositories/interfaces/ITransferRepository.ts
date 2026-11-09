@@ -41,8 +41,10 @@ export interface TransferView {
     dispatchedBy: { id: string; name: string | null } | null;
     dispatchedAt: Date | null;
     lines: TransferLineView[];
+    expectedAt: Date | null;                             // the day the goods are expected, given when they are sent
     receipts: TransferReceiptView[];                     // every count of what arrived, oldest first
-    supplyInvoice: { id: string; reference: string | null; status: string; total: string } | null;     // the live (not void) supply invoice of this transfer
+    supplyInvoice: { id: string; reference: string | null; status: string; total: string } | null;     // the live (not void) supply invoice: the warehouse invoices the receiving branch
+    returnInvoice: { id: string; reference: string | null; status: string; total: string } | null;     // the live return invoice: the sending branch returns the goods to the warehouse
 }
 
 export interface TransferListFilter {

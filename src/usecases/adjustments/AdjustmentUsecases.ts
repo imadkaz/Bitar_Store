@@ -1,9 +1,10 @@
 import { AuthContext } from '../../models/AuthContext';
-import { ADJUSTMENT_REASONS, parseAdjustment, planAdjustment } from '../../models/Adjustment.model';
+import { ADJUSTMENT_REASONS, MANAGER_ONLY_REASONS, parseAdjustment, planAdjustment } from '../../models/Adjustment.model';
 import { AdjustmentView, IAdjustmentRepository } from '../../repositories/interfaces/IAdjustmentRepository';
 import { IAdjustmentUnitOfWork } from '../../repositories/interfaces/IAdjustmentUnitOfWork';
 import { IBranchRepository } from '../../repositories/interfaces/IBranchRepository';
 import { ConflictError } from '../../utils/exeptions/ConflictError';
+import { UserRole } from '../../models/User.model';
 import { ForbiddenError } from '../../utils/exeptions/ForbiddenError';
 import { InsufficientStockError } from '../../utils/exeptions/InsufficientStockError';
 import { NotFoundError } from '../../utils/exeptions/NotFoundError';
@@ -29,6 +30,10 @@ export class CreateAdjustmentUsecase {
         const key = parseIdempotencyKey(idempotencyKeyHeader);
         const request = parseAdjustment(body);
         if (!auth.canAccessBranch(request.branchId)) throw new ForbiddenError('You cannot adjust the stock of this place');
+        // BL-02: putting on hold, releasing and disposing are a Business Manager's acts; a permission given to an employee never reaches them
+        if (MANAGER_ONLY_REASONS.includes(request.reason) && auth.user.getRole() !== UserRole.ADMIN && auth.user.getRole() !== UserRole.MANAGER) {
+            throw new ForbiddenError(`Only a manager can use the reason "${request.reason}"`);
+        }
         const moves = planAdjustment(request);
         const hash = createHash('sha256').update(JSON.stringify(['adjustment.create', request])).digest('hex');
 

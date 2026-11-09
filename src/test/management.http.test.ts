@@ -282,7 +282,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
             expect(res.body.roles.manager).toEqual(expect.arrayContaining(['cash.open', 'cash.accept', 'cash.close', 'cash.move']));
             expect(res.body.permissions.find((p: { key: string }) => p.key === 'catalog.create')).toMatchObject({ label: 'Manage products', grantable: true });
             expect(res.body.permissions.find((p: { key: string }) => p.key === 'users.administer').grantable).toBe(false);
-            expect(res.body.roles.employee).toEqual(['sales.create', 'transfers.receive']);
+            expect(res.body.roles.employee).toEqual(['sales.create']);             // confirming an arrival is a manager's act: an employee receives only when it is granted (BL-03)
             expect(res.body.roles.manager).toContain('catalog.create');
             expect((await request(app).get('/permissions').set(as(managerId))).status).toBe(200);          // a manager reads it too (to hand on what they have)
             expect((await request(app).get('/permissions').set(as(staffId))).status).toBe(403);
@@ -292,7 +292,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
         it('an employee who may create products: the admin ticks it, and it works on their very next request; unticking takes it back', async () => {
             const employeeId = await make('pmemp', UserRole.EMPLOYEE);
             const before = await permissionsOf(employeeId);
-            expect(allowedKeys(before.body)).toEqual(['sales.create', 'transfers.receive']);
+            expect(allowedKeys(before.body)).toEqual(['sales.create']);
             expect(before.body.permissions.find((p: { key: string }) => p.key === 'catalog.create')).toMatchObject({ allowed: false, source: 'none' });
             expect((await createProduct(employeeId)).status).toBe(403);
 
@@ -330,7 +330,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
             expect(created.status).toBe(201);
             const set = await setPermissions(created.body.id, { 'catalog.create': true, 'adjustments.create': true, 'sales.create': false });
             expect(set.status, JSON.stringify(set.body)).toBe(200);
-            expect(allowedKeys(set.body)).toEqual(['catalog.create', 'transfers.receive', 'adjustments.create']);       // in the order of the list, sales.create is gone
+            expect(allowedKeys(set.body)).toEqual(['catalog.create', 'adjustments.create']);       // in the order of the list, sales.create is gone
             expect(set.body.overrides).toHaveLength(3);
         });
 
@@ -362,7 +362,7 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
             const audit = await request(app).get(`/audit-events?entityType=user&entityId=${target}`).set(as(adminId));
             const events = audit.body.filter((e: { action: string }) => e.action === 'user.permissions');
             expect(events).toHaveLength(1);
-            expect(events[0]).toMatchObject({ by: { id: adminId }, details: { before: ['sales.create', 'transfers.receive'], after: ['sales.create', 'transfers.receive', 'reports.financial'] } });
+            expect(events[0]).toMatchObject({ by: { id: adminId }, details: { before: ['sales.create'], after: ['sales.create', 'reports.financial'] } });
         });
 
         it('a deleted user has no permissions to edit, and the ones they had go with them', async () => {
@@ -490,6 +490,8 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
             const employeeId = await make('plc', UserRole.EMPLOYEE);
             await request(app).put(`/users/${employeeId}/branches/${hamraId}`).set(as(adminId));
             expect((await request(app).get('/branches').set(as(employeeId))).body.map((b: { id: string }) => b.id)).toEqual([hamraId]);       // GET /branches shows only their own
+            expect((await request(app).get('/places').set(as(employeeId))).status).toBe(403);                                                   // a plain employee has neither right
+            await request(app).put(`/users/${employeeId}/permissions`).set(as(adminId)).send({ permissions: { 'transfers.receive': true } });
 
             const res = await request(app).get('/places').set(as(employeeId));
             expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -512,6 +514,9 @@ describe.skipIf(!disposable)('what the owner manages (real database)', () => {
 
         it('someone with neither permission gets 403', async () => {
             const nobody = await make('plcno', UserRole.EMPLOYEE);
+            expect((await request(app).get('/places').set(as(nobody))).status).toBe(403);                      // an employee has neither right by default
+            await request(app).put(`/users/${nobody}/permissions`).set(as(adminId)).send({ permissions: { 'transfers.receive': true } });
+            expect((await request(app).get('/places').set(as(nobody))).status).toBe(200);
             await request(app).put(`/users/${nobody}/permissions`).set(as(adminId)).send({ permissions: { 'transfers.receive': false } });
             expect((await request(app).get('/places').set(as(nobody))).status).toBe(403);
         });

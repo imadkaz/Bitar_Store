@@ -6,8 +6,10 @@ import { lineTotalCents, parseCreateInvoice, parseInvoiceUpdate, parseVoidReason
 describe('parseCreateInvoice', () => {
     it('a supply invoice is made from a transfer', () => {
         const transferId = randomUUID();
-        expect(parseCreateInvoice({ transferId, note: ' Winter collection ' })).toEqual({ kind: 'b2b', transferId, note: 'Winter collection' });
-        expect(parseCreateInvoice({ transferId })).toEqual({ kind: 'b2b', transferId, note: null });
+        expect(parseCreateInvoice({ transferId, note: ' Winter collection ' })).toEqual({ kind: 'b2b', transferId, note: 'Winter collection', invoiceKind: null });
+        expect(parseCreateInvoice({ transferId })).toEqual({ kind: 'b2b', transferId, note: null, invoiceKind: null });
+        expect(parseCreateInvoice({ transferId, invoiceKind: 'b2b_return' })).toEqual({ kind: 'b2b', transferId, note: null, invoiceKind: 'b2b_return' });
+        expect(() => parseCreateInvoice({ transferId, invoiceKind: 'b2c' })).toThrow();
     });
 
     it('the invoice of a sale takes the customer name and phone, both optional', () => {
