@@ -39,9 +39,17 @@ class PrismaSaleTransaction implements SaleTransaction {
         return quantities;
     }
 
-    async insertSale(sale: Sale, idempotencyKeyId: string, actorId: string): Promise<void> {
+    async resolveCashSession(branchId: string): Promise<string | null> {
+        const setting = await this.tx.$queryRaw<{ value: unknown }[]>`SELECT value FROM settings WHERE key = 'requireOpenCashSession'`;
+        const open = await this.tx.$queryRaw<{ id: string }[]>`SELECT id FROM cash_sessions WHERE branch_id = ${branchId}::uuid AND status = 'open' FOR SHARE`;
+        if (open[0]) return open[0].id;
+        if (setting[0]?.value === true) throw new ConflictError('This branch has no open cash session: open one before selling');
+        return null;
+    }
+
+    async insertSale(sale: Sale, idempotencyKeyId: string, actorId: string, cashSessionId: string | null = null): Promise<void> {
         try {
-            await this.tx.sale.create({ data: SaleMapper.toPersistence(sale, idempotencyKeyId, actorId) as Prisma.SaleUncheckedCreateInput });
+            await this.tx.sale.create({ data: { ...SaleMapper.toPersistence(sale, idempotencyKeyId, actorId), cashSessionId } as Prisma.SaleUncheckedCreateInput });
         } catch (error) {
             // the unique index on the Whish reference has the last word: a transfer can pay only ONE thing
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

@@ -12,6 +12,10 @@ export const PERMISSIONS = [
     'adjustments.create',
     'reports.financial',
     'users.administer',
+    'cash.open',        // open a cash session
+    'cash.accept',      // take over the drawer in a counted handover
+    'cash.close',       // count and close the session
+    'cash.move',        // cash in or out outside the sales
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -27,6 +31,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     [UserRole.MANAGER]: [
         'sales.create', 'transfers.receive', 'discounts.apply', 'catalog.create',
         'transfers.dispatch', 'returns.create', 'adjustments.create', 'reports.financial',
+        'cash.open', 'cash.accept', 'cash.close', 'cash.move',
     ],
     [UserRole.ADMIN]: [...PERMISSIONS],
 };

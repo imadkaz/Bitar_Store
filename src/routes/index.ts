@@ -68,18 +68,22 @@ import { ListReorderLevelsUsecase, SetReorderLevelUsecase, SetReorderLevelForSty
 import { StockInsightRoutes, ReorderLevelRoutes, ReplenishmentRoutes, ReportRoutes, AuditRoutes } from './Insight.Routes';
 import { LocationRepository } from '../repositories/LocationRepository';
 import { SupplierRepository } from '../repositories/SupplierRepository';
+import { SettingsRepository } from '../repositories/SettingsRepository';
+import { CashSessionRepository } from '../repositories/CashSessionRepository';
+import { AddCashMovementUsecase, CloseCashSessionUsecase, CorrectCashSessionUsecase, GetCashSessionUsecase, GetOpenCashSessionUsecase, HandoverCashSessionUsecase, ListCashSessionsUsecase, OpenCashSessionUsecase, ReviewCashSessionUsecase } from '../usecases/cash/CashSessionUsecases';
+import { GetSettingsUsecase, UpdateSettingsUsecase } from '../usecases/settings/SettingsUsecases';
 import { CreateSupplierUsecase, GetSupplierUsecase, ListSuppliersUsecase, UpdateSupplierUsecase } from '../usecases/suppliers/SupplierUsecases';
 import { CancelTransferUsecase, CreateTransferUsecase, DispatchTransferUsecase, GetTransferUsecase, ListTransfersUsecase, ReceiveTransferUsecase, ResolveTransferUsecase } from '../usecases/transfer/TransferUsecases';
 import { TransferController } from '../controllers/TransferController';
 import { TransferRepository } from '../repositories/TransferRepository';
 import { TransferUnitOfWork } from '../repositories/TransferUnitOfWork';
 import { TransferRoutes } from './Transfer.Routes';
-import { SupplierController, AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
+import { CashSessionController, SettingsController, SupplierController, AdjustmentController, CategoryController, DeletionController, GoodsReceiptController, InvoiceController, PermissionController, PlacesController, SalesHistoryController, WarehouseController } from '../controllers/ManagementControllers';
 import { ManagementRepository } from '../repositories/ManagementRepository';
 import { SalesHistoryRepository } from '../repositories/SalesHistoryRepository';
 import { ListCategoriesUsecase, CreateCategoryUsecase, UpdateCategoryUsecase, DeleteCategoryUsecase, DeleteStyleUsecase, DeleteSkuUsecase, DeleteBranchUsecase, SoftDeleteUserUsecase, GetWarehouseUsecase, GetPermissionCatalogUsecase, GetUserPermissionsUsecase, SetUserPermissionsUsecase, GetBranchAccessUsecase, SetBranchAccessUsecase, ListPlacesUsecase } from '../usecases/management/ManagementUsecases';
 import { ListSalesHistoryUsecase } from '../usecases/sales/ListSalesHistoryUsecase';
-import { SupplierRoutes, AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, InvoiceRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
+import { CashSessionRoutes, SettingsRoutes, SupplierRoutes, AdjustmentRoutes, CategoryRoutes, DeleteRoutes, GoodsReceiptRoutes, InvoiceRoutes, PermissionRoutes, PlacesRoutes, SalesHistoryRoutes, WarehouseRoutes } from './Management.Routes';
 import { UpdateBranchUsecase } from '../usecases/branch/UpdateBranchUsecase';
 import { AdjustmentUnitOfWork } from '../repositories/AdjustmentUnitOfWork';
 import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
@@ -217,6 +221,13 @@ const adjustmentController = new AdjustmentController(
     new ListAdjustmentsUsecase(branchRepository, adjustmentRepository),
 );
 
+const cashSessionRepository = new CashSessionRepository(prisma);
+const cashSessionController = new CashSessionController(
+    new OpenCashSessionUsecase(cashSessionRepository, branchRepository), new AddCashMovementUsecase(cashSessionRepository), new HandoverCashSessionUsecase(cashSessionRepository), new CloseCashSessionUsecase(cashSessionRepository),
+    new CorrectCashSessionUsecase(cashSessionRepository), new ReviewCashSessionUsecase(cashSessionRepository), new GetCashSessionUsecase(cashSessionRepository), new GetOpenCashSessionUsecase(cashSessionRepository), new ListCashSessionsUsecase(cashSessionRepository),
+);
+const settingsRepository = new SettingsRepository(prisma);
+const settingsController = new SettingsController(new GetSettingsUsecase(settingsRepository), new UpdateSettingsUsecase(settingsRepository));
 const supplierRepository = new SupplierRepository(prisma);
 const supplierController = new SupplierController(new CreateSupplierUsecase(supplierRepository), new GetSupplierUsecase(supplierRepository), new ListSuppliersUsecase(supplierRepository), new UpdateSupplierUsecase(supplierRepository));
 const goodsReceiptController = new GoodsReceiptController(
@@ -305,6 +316,8 @@ routes.use('/auth', AuthRoutes(authController, authenticate));
 routes.use('/stock/adjustments', AdjustmentRoutes(adjustmentController, authenticate));
 routes.use('/goods-receipts', GoodsReceiptRoutes(goodsReceiptController, authenticate));
 routes.use('/suppliers', SupplierRoutes(supplierController, authenticate));
+routes.use('/settings', SettingsRoutes(settingsController, authenticate));
+routes.use('/cash-sessions', CashSessionRoutes(cashSessionController, authenticate));
 routes.use('/invoices', InvoiceRoutes(invoiceController, authenticate));
 routes.use('/stock', StockRoutes(stockController, authenticate));
 routes.use('/stock', StockInsightRoutes(stockInsightController, authenticate));
