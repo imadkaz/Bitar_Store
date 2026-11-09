@@ -16,7 +16,8 @@
     "test-vitest": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
-    "seed:dev": "tsx scripts/seed-dev.ts"
+    "seed:dev": "tsx scripts/seed-dev.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts"
   },
   "keywords": [],
   "author": "imad",
