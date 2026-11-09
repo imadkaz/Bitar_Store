@@ -45,6 +45,7 @@ async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): 
         const skuIds = request.lines.map((line) => line.skuId);
         const businessDate = businessDateOf(this.now());
         let shortages: StockShortage[] = [];
+        let cashSessionId: string | null = null;
 
         // 2) the sale itself: ONE transaction. Either everything below happens, or nothing does.
         let saleId: string;
@@ -83,6 +84,9 @@ async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): 
                     payments: request.payments,
                 });
 
+                // the drawer: every sale belongs to the open cash session of its branch (and cannot be made without one when the managers require it)
+                cashSessionId = await tx.resolveCashSession(request.branchId);
+
                 // lock first, THEN look at the quantities: nobody can take them between our look and our write
                 const available = await tx.lockSellableStock(request.branchId, [...skuIds].sort());
                 shortages = sale.lines
@@ -90,7 +94,7 @@ async execute(body: unknown, idempotencyKeyHeader: unknown, auth: AuthContext): 
                     .map((line) => ({ skuId: line.skuId, skuCode: found.get(line.skuId)!.skuCode, requested: line.quantity, available: available.get(line.skuId) ?? 0 }));
                 if (shortages.length > 0) throw new InsufficientStockError(shortages);
 
-                await tx.insertSale(sale, claim.keyId, actorId);
+                await tx.insertSale(sale, claim.keyId, actorId, cashSessionId);
                 await tx.deductStock(request.branchId, sale.id, sale.lines.map((l) => ({ skuId: l.skuId, quantity: l.quantity })), actorId, claim.keyId);
                 await tx.completeIdempotencyKey(claim.keyId, 'sale', sale.id);
                 return sale.id;

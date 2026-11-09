@@ -77,6 +77,8 @@ class FakeSaleTransaction implements SaleTransaction {
         return skuIds.map((id) => this.w.skus.get(id)).filter((s): s is WorldSku => !!s);
     }
 
+    async resolveCashSession(): Promise<string | null> { return null; }     // the cash sessions are checked against the real database
+
     async lockSellableStock(branchId: string, skuIds: string[]) {
         return new Map(skuIds.map((id) => [id, this.w.quantity(branchId, id)]));
     }

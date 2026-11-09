@@ -13,6 +13,10 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
     'adjustments.create': { label: 'Manage stock', description: 'Opening stock, stock adjustments, minimum levels, "what to send" suggestions and the movement history.' },
     'reports.financial': { label: 'See sales reports', description: 'Sales per branch and per day, best sellers.' },
     'users.administer': { label: 'Manage users', description: 'Create users and change their roles and permissions. Only admins have it: it cannot be granted.' },
+    'cash.open': { label: 'Open the cash drawer', description: 'Open a cash session at their branch with the counted opening cash.' },
+    'cash.accept': { label: 'Take over the drawer', description: 'Accept responsibility for the drawer in a counted handover.' },
+    'cash.close': { label: 'Close the cash drawer', description: 'Count the cash and close the session, with the difference explained.' },
+    'cash.move': { label: 'Cash in and out', description: 'Record cash added to or taken from the drawer outside the sales.' },
 };
 
 // An admin keeps this one for the admin role alone: granting it to a manager or an employee would let them hand out more power.

@@ -200,6 +200,7 @@ model StockAlert {
 }
 
 model Sale {
+  cashSessionId String? @map("cash_session_id") @db.Uuid
   id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reference        String        @default(dbgenerated("('S-'::text || lpad((nextval('sale_ref_seq'::regclass))::text, 8, '0'::text))"))
   branchId         String        @map("branch_id") @db.Uuid

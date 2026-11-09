@@ -69,3 +69,28 @@ export const SupplierRoutes = (controller: SupplierController, authenticate: Req
         .post('/', authenticate, asyncHandler(controller.createSupplier))
         .get('/:id', authenticate, asyncHandler(controller.getSupplier))
         .patch('/:id', authenticate, asyncHandler(controller.updateSupplier));
+
+
+import { SettingsController } from '../controllers/ManagementControllers';
+
+// mounted at /settings: everyone signed in reads, an admin or a manager changes
+export const SettingsRoutes = (controller: SettingsController, authenticate: RequestHandler): Router =>
+    Router()
+        .get('/', authenticate, asyncHandler(controller.getSettings))
+        .put('/', authenticate, asyncHandler(controller.updateSettings));
+
+
+import { CashSessionController } from '../controllers/ManagementControllers';
+
+// mounted at /cash-sessions: the use cases check the permission and the branch
+export const CashSessionRoutes = (controller: CashSessionController, authenticate: RequestHandler): Router =>
+    Router()
+        .get('/', authenticate, asyncHandler(controller.listSessions))
+        .post('/', authenticate, asyncHandler(controller.openSession))
+        .get('/current', authenticate, asyncHandler(controller.currentSession))
+        .get('/:id', authenticate, asyncHandler(controller.getSession))
+        .post('/:id/movements', authenticate, asyncHandler(controller.addMovement))
+        .post('/:id/handover', authenticate, asyncHandler(controller.handoverSession))
+        .post('/:id/close', authenticate, asyncHandler(controller.closeSession))
+        .post('/:id/corrections', authenticate, asyncHandler(controller.correctSession))
+        .post('/:id/review', authenticate, asyncHandler(controller.reviewSession));

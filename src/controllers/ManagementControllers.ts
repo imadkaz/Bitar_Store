@@ -181,3 +181,44 @@ export class SupplierController {
         res.status(200).json(items);
     };
 }
+
+
+import { GetSettingsUsecase, UpdateSettingsUsecase } from '../usecases/settings/SettingsUsecases';
+
+export class SettingsController {
+    constructor(private readonly get: GetSettingsUsecase, private readonly update: UpdateSettingsUsecase) {}
+    getSettings = async (_req: Request, res: Response) => { res.status(200).json(await this.get.execute()); };
+    updateSettings = async (req: Request, res: Response) => { res.status(200).json(await this.update.execute(req.body, getAuth(req))); };
+}
+
+
+import { AddCashMovementUsecase, CloseCashSessionUsecase, CorrectCashSessionUsecase, GetCashSessionUsecase, GetOpenCashSessionUsecase, HandoverCashSessionUsecase, ListCashSessionsUsecase, OpenCashSessionUsecase, ReviewCashSessionUsecase } from '../usecases/cash/CashSessionUsecases';
+
+export class CashSessionController {
+    constructor(
+        private readonly open: OpenCashSessionUsecase, private readonly movement: AddCashMovementUsecase, private readonly handover: HandoverCashSessionUsecase, private readonly close: CloseCashSessionUsecase,
+        private readonly correct: CorrectCashSessionUsecase, private readonly review: ReviewCashSessionUsecase, private readonly get: GetCashSessionUsecase, private readonly current: GetOpenCashSessionUsecase, private readonly list: ListCashSessionsUsecase,
+    ) {}
+
+    openSession = async (req: Request, res: Response) => { res.status(201).json(await this.open.execute(req.body, getAuth(req))); };
+    addMovement = async (req: Request, res: Response) => {
+        const { session, replayed } = await this.movement.execute(req.params.id as string, req.body, req.header('Idempotency-Key'), getAuth(req));
+        if (replayed) res.setHeader('Idempotent-Replay', 'true');
+        res.status(replayed ? 200 : 201).json(session);
+    };
+    handoverSession = async (req: Request, res: Response) => {
+        const { session, replayed } = await this.handover.execute(req.params.id as string, req.body, req.header('Idempotency-Key'), getAuth(req));
+        if (replayed) res.setHeader('Idempotent-Replay', 'true');
+        res.status(replayed ? 200 : 201).json(session);
+    };
+    closeSession = async (req: Request, res: Response) => { res.status(200).json(await this.close.execute(req.params.id as string, req.body, getAuth(req))); };
+    correctSession = async (req: Request, res: Response) => { res.status(201).json(await this.correct.execute(req.params.id as string, req.body, getAuth(req))); };
+    reviewSession = async (req: Request, res: Response) => { res.status(200).json(await this.review.execute(req.params.id as string, req.body, getAuth(req))); };
+    getSession = async (req: Request, res: Response) => { res.status(200).json(await this.get.execute(req.params.id as string, getAuth(req))); };
+    currentSession = async (req: Request, res: Response) => { res.status(200).json(await this.current.execute(textParam(req, 'branchId'), getAuth(req))); };
+    listSessions = async (req: Request, res: Response) => {
+        const { items, total } = await this.list.execute({ branchId: textParam(req, 'branchId'), status: textParam(req, 'status'), review: textParam(req, 'review'), from: textParam(req, 'from'), to: textParam(req, 'to'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') }, getAuth(req));
+        res.setHeader('X-Total-Count', String(total));
+        res.status(200).json(items);
+    };
+}
