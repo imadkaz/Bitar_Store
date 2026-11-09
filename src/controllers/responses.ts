@@ -108,6 +108,8 @@ export function toSaleResponse(sale: SaleView) {
         soldAt: sale.soldAt,
         businessDate: sale.businessDate,
         note: sale.note,
+        exchangeRate: sale.exchangeRate,
+        totalLbp: sale.totalLbp,
         lines: sale.lines.map((line) => ({
             lineNo: line.lineNo,
             skuId: line.skuId,
@@ -130,6 +132,12 @@ export function toSaleResponse(sale: SaleView) {
             tendered: p.tenderedCents === null ? null : formatCents(p.tenderedCents),
             change: p.tenderedCents === null ? null : formatCents(p.tenderedCents - p.amountCents),
             reference: p.whishReference,
+            currency: p.currency,
+            lbpAmount: p.lbpAmount,                                    // pounds received (an LBP payment)
+            exchangeRate: p.exchangeRate,
+            changeUsd: p.tenderedCents === null ? null : formatCents(p.tenderedCents - p.amountCents - p.changeLbpCents),       // the part of the change given in dollars ...
+            changeLbpUsd: p.changeLbpCents > 0 ? formatCents(p.changeLbpCents) : null,                                          // ... the part given in pounds, in dollars ...
+            changeLbp: p.changeLbp,                                                                                              // ... and in pounds
         })),
     };
 }

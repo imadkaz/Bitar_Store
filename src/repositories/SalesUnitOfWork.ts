@@ -47,9 +47,25 @@ class PrismaSaleTransaction implements SaleTransaction {
         return null;
     }
 
+    async fxSettings(): Promise<{ rate: number; step: number } | null> {
+        const rows = await this.tx.$queryRaw<{ key: string; value: unknown }[]>`SELECT key, value FROM settings WHERE key IN ('exchangeRateUsdLbp', 'lbpRoundingStep')`;
+        const rate = rows.find((r) => r.key === 'exchangeRateUsdLbp')?.value;
+        if (typeof rate !== 'number') return null;
+        const step = rows.find((r) => r.key === 'lbpRoundingStep')?.value;
+        return { rate, step: typeof step === 'number' ? step : 1000 };
+    }
+
     async insertSale(sale: Sale, idempotencyKeyId: string, actorId: string, cashSessionId: string | null = null): Promise<void> {
         try {
             await this.tx.sale.create({ data: { ...SaleMapper.toPersistence(sale, idempotencyKeyId, actorId), cashSessionId } as Prisma.SaleUncheckedCreateInput });
+            // the cost of what is sold, kept on the day of the sale: the average cost at the warehouse, else the catalog cost a manager typed, else unknown (never zero)
+            await this.tx.$executeRaw`
+                INSERT INTO sale_line_costs (sale_line_id, unit_cost_snapshot, source)
+                SELECT l.id, COALESCE(sc.avg_unit_cost, cc.unit_cost), CASE WHEN sc.avg_unit_cost IS NOT NULL THEN 'warehouse' WHEN cc.unit_cost IS NOT NULL THEN 'catalog' END
+                FROM sale_lines l
+                LEFT JOIN stock_costs sc ON sc.sku_id = l.sku_id AND sc.branch_id = (SELECT id FROM branches WHERE kind = 'warehouse' LIMIT 1)
+                LEFT JOIN catalog_costs cc ON cc.sku_id = l.sku_id
+                WHERE l.sale_id = ${sale.id}::uuid`;
         } catch (error) {
             // the unique index on the Whish reference has the last word: a transfer can pay only ONE thing
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

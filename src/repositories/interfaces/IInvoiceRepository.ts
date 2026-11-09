@@ -26,6 +26,8 @@ export interface InvoiceSummary {
     subtotal: string;
     discountTotal: string;
     total: string;
+    exchangeRate: number | null;      // the invoice of a sale: the rate of the day of the sale ...
+    totalLbp: number | null;         // ... and the total in pounds at that rate
     note: string | null;
     issuedBy: { id: string; name: string | null };
     createdAt: Date;
@@ -36,7 +38,7 @@ export interface InvoiceSummary {
 
 export interface InvoiceView extends InvoiceSummary {
     lines: InvoiceLineView[];
-    payments: { method: string; amount: string; reference: string | null }[];     // the payments of the sale, for a b2c invoice
+    payments: { method: string; amount: string; reference: string | null; currency: 'USD' | 'LBP'; lbpAmount: number | null; changeLbp: number | null }[];     // the payments of the sale, for a b2c invoice
 }
 
 export interface InvoiceListFilter {

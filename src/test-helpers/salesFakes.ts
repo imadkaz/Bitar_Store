@@ -77,7 +77,8 @@ class FakeSaleTransaction implements SaleTransaction {
         return skuIds.map((id) => this.w.skus.get(id)).filter((s): s is WorldSku => !!s);
     }
 
-    async resolveCashSession(): Promise<string | null> { return null; }     // the cash sessions are checked against the real database
+    async resolveCashSession(): Promise<string | null> { return null; }
+    async fxSettings(): Promise<{ rate: number; step: number } | null> { return null; }     // the cash sessions are checked against the real database
 
     async lockSellableStock(branchId: string, skuIds: string[]) {
         return new Map(skuIds.map((id) => [id, this.w.quantity(branchId, id)]));
@@ -130,12 +131,12 @@ export class FakeSaleRepository implements ISaleRepository {
         return {
             id: sale.id, reference: `S-${String(ref).padStart(8, '0')}`, branchId: sale.branchId, soldBy: sale.soldBy, soldByName: this.world.names.get(sale.soldBy) ?? null,
             status: 'completed', channel: sale.channel, socialPlatform: sale.socialPlatform, currency: sale.currency,
-            subtotalCents: sale.subtotalCents, discountCents: sale.discountCents, totalCents: sale.totalCents, soldAt: stored.soldAt, businessDate: sale.businessDate, note: sale.note,
+            subtotalCents: sale.subtotalCents, discountCents: sale.discountCents, totalCents: sale.totalCents, soldAt: stored.soldAt, businessDate: sale.businessDate, note: sale.note, exchangeRate: sale.exchangeRate, totalLbp: sale.totalLbp,
             lines: sale.lines.map((l) => {
                 const sku = this.world.skus.get(l.skuId)!;
                 return { lineNo: l.lineNo, skuId: l.skuId, skuCode: sku.skuCode, styleName: sku.styleName, size: sku.size, color: sku.color, quantity: l.quantity, unitPriceCents: l.unitPriceStandardCents, reduction: l.reduction, lineTotalCents: l.lineTotalCents };
             }),
-            payments: sale.payments.map((p) => ({ method: p.method, amountCents: p.amountCents, tenderedCents: p.tenderedCents, whishReference: p.whishReference, receivedBy: p.receivedBy })),
+            payments: sale.payments.map((p) => ({ method: p.method, amountCents: p.amountCents, tenderedCents: p.tenderedCents, whishReference: p.whishReference, receivedBy: p.receivedBy, currency: p.currency, lbpAmount: p.lbpAmount, exchangeRate: p.exchangeRate, changeLbpCents: p.changeLbpCents, changeLbp: p.changeLbp })),
         };
     }
 

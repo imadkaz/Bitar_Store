@@ -24,6 +24,8 @@ export interface SaleTransaction {
     lockSellableStock(branchId: string, skuIds: string[]): Promise<Map<string, number>>;
     // the open cash session of the branch (locked FOR SHARE so a closing waits for this sale); null when there is none and sessions are not required, a conflict when they are
     resolveCashSession(branchId: string): Promise<string | null>;
+    // the rate (pounds for one dollar) and the rounding step set by the managers: null when no rate was set
+    fxSettings(): Promise<{ rate: number; step: number } | null>;
     insertSale(sale: Sale, idempotencyKeyId: string, actorId: string, cashSessionId?: string | null): Promise<void>;
     deductStock(branchId: string, saleId: string, items: { skuId: string; quantity: number }[], actorId: string, idempotencyKeyId: string): Promise<void>;
     completeIdempotencyKey(idempotencyKeyId: string, resourceType: string, resourceId: string): Promise<void>;

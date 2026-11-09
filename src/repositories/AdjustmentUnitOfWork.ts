@@ -30,6 +30,13 @@ class PrismaAdjustmentTransaction implements AdjustmentTransaction {
 
     async lockBalances(branchId: string, skuId: string, buckets: AdjustableBucket[]): Promise<Map<AdjustableBucket, number>> {
         const quantities = new Map<AdjustableBucket, number>(buckets.map((b) => [b, 0]));
+        // Every row we may touch exists BEFORE we lock, so everybody locks the same rows in the same order (by bucket). Without this, a first hold of a product
+        // (no row on hold yet) locked the row for sale first and the row on hold later, while the next ones locked them the other way round: a deadlock.
+        for (const bucket of [...buckets].sort()) {
+            await this.tx.$executeRaw`
+                INSERT INTO stock_balances (sku_id, branch_id, bucket, quantity) VALUES (${skuId}::uuid, ${branchId}::uuid, ${bucket}, 0)
+                ON CONFLICT (sku_id, branch_id, bucket) DO NOTHING`;
+        }
         const rows = await this.tx.$queryRaw<{ bucket: AdjustableBucket; quantity: number }[]>`
             SELECT bucket, quantity FROM stock_balances
             WHERE branch_id = ${branchId}::uuid AND sku_id = ${skuId}::uuid AND bucket IN (${Prisma.join(buckets)})

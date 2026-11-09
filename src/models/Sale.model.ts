@@ -1,6 +1,7 @@
 import { ValidationError } from "../utils/exeptions/ValidationError";
 import { formatCents } from "./Money";
 import { MAX_LINES, MAX_PAYMENTS, SALE_CHANNELS, SaleChannel, SaleLine, SaleLineInput, SOCIAL_PLATFORMS, SocialPlatform } from "./SaleLine.model";
+import { Fx, usdCentsToLbp } from "./Lbp";
 import { PaymentInput, SalePayment } from "./SalePayment.model";
 
 export interface SaleProps {
@@ -14,6 +15,7 @@ export interface SaleProps {
     businessDate: string;          // YYYY-MM-DD, the shop's day
     lines: SaleLineInput[];
     payments: PaymentInput[];
+    fx?: Fx | null;                // the rate and the rounding step of the day, when a manager has set a rate
 }
 
 // A COMPLETED sale: it only exists fully paid (BL-04). The payments must add up to the total, to the cent.
@@ -32,6 +34,8 @@ export class Sale {
         readonly subtotalCents: number,
         readonly discountCents: number,
         readonly totalCents: number,
+        readonly exchangeRate: number | null = null,           // the rate of the day of the sale ...
+        readonly totalLbp: number | null = null,               // ... and the total in pounds at that rate (null when no rate was set)
     ) {}
 
     static create(props: SaleProps): Sale {
@@ -65,13 +69,13 @@ export class Sale {
         const total = lines.reduce((sum, l) => sum + l.lineTotalCents, 0);
 
         if (props.payments.length > MAX_PAYMENTS) throw new ValidationError(`A sale can have at most ${MAX_PAYMENTS} payments`);
-        const payments = props.payments.map((p) => SalePayment.create(p, props.soldBy));
+        const payments = props.payments.map((p) => SalePayment.create(p, props.soldBy, props.fx ?? null));
         const paid = payments.reduce((sum, p) => sum + p.amountCents, 0);
         if (total === 0 && payments.length > 0) throw new ValidationError('A sale with a total of zero has no payments');
         if (paid !== total) {
             throw new ValidationError(`The payments add up to ${formatCents(paid)} but the sale total is ${formatCents(total)}: a sale must be paid in full`);
         }
 
-        return new Sale(props.id, props.branchId, props.soldBy, props.currency, channel, socialPlatform, note, props.businessDate, lines, payments, subtotal, subtotal - total, total);
+        return new Sale(props.id, props.branchId, props.soldBy, props.currency, channel, socialPlatform, note, props.businessDate, lines, payments, subtotal, subtotal - total, total, props.fx ? props.fx.rate : null, props.fx ? usdCentsToLbp(total, props.fx) : null);
     }
 }

@@ -6,9 +6,10 @@ export interface Settings {
     returnPeriodDays: number;              // a customer return is accepted this many days after the sale
     defaultReservationDays: number;        // how long a reserved order is kept by default
     requireOpenCashSession: boolean;       // true: a sale cannot be completed without an open cash session at its branch
+    lbpRoundingStep: number;               // pounds are rounded to the nearest multiple of this (1000: 301,615 becomes 302,000)
 }
 
-export const DEFAULT_SETTINGS: Settings = { exchangeRateUsdLbp: null, returnPeriodDays: 14, defaultReservationDays: 3, requireOpenCashSession: false };
+export const DEFAULT_SETTINGS: Settings = { exchangeRateUsdLbp: null, returnPeriodDays: 14, defaultReservationDays: 3, requireOpenCashSession: false, lbpRoundingStep: 1000 };
 export const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[];
 
 const whole = (value: unknown, label: string, min: number, max: number): number => {
@@ -26,6 +27,7 @@ export function parseSettingsUpdate(body: unknown): Partial<Settings> {
     if (input.exchangeRateUsdLbp !== undefined) out.exchangeRateUsdLbp = input.exchangeRateUsdLbp === null ? null : whole(input.exchangeRateUsdLbp, 'exchangeRateUsdLbp', 1, 10_000_000);
     if (input.returnPeriodDays !== undefined) out.returnPeriodDays = whole(input.returnPeriodDays, 'returnPeriodDays', 0, 365);
     if (input.defaultReservationDays !== undefined) out.defaultReservationDays = whole(input.defaultReservationDays, 'defaultReservationDays', 1, 60);
+    if (input.lbpRoundingStep !== undefined) out.lbpRoundingStep = whole(input.lbpRoundingStep, 'lbpRoundingStep', 1, 1_000_000);
     if (input.requireOpenCashSession !== undefined) {
         if (typeof input.requireOpenCashSession !== 'boolean') throw new ValidationError('requireOpenCashSession must be true or false');
         out.requireOpenCashSession = input.requireOpenCashSession;

@@ -94,3 +94,13 @@ export const CashSessionRoutes = (controller: CashSessionController, authenticat
         .post('/:id/close', authenticate, asyncHandler(controller.closeSession))
         .post('/:id/corrections', authenticate, asyncHandler(controller.correctSession))
         .post('/:id/review', authenticate, asyncHandler(controller.reviewSession));
+
+
+import { CostController } from '../controllers/ManagementControllers';
+
+// the cost of a piece (admin or manager) and the profit report: /costs/skus/:id and /costs/profit
+export const CostRoutes = (controller: CostController, authenticate: RequestHandler): Router =>
+    Router()
+        .get('/profit', authenticate, asyncHandler(controller.getProfit))
+        .get('/skus/:id', authenticate, asyncHandler(controller.getCost))
+        .put('/skus/:id', authenticate, asyncHandler(controller.setCost));

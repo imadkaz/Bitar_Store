@@ -27,6 +27,8 @@ export class SaleRepository implements ISaleRepository {
             soldAt: sale.soldAt,
             businessDate: sale.businessDate.toISOString().slice(0, 10),
             note: sale.note,
+            exchangeRate: sale.exchangeRate,
+            totalLbp: sale.totalLbp === null ? null : Number(sale.totalLbp),
             lines: sale.lines.map((line) => {
                 const sku = skus.get(line.skuId)!;
                 const reduction =
@@ -54,6 +56,11 @@ export class SaleRepository implements ISaleRepository {
                 tenderedCents: p.cashTendered ? centsOf(p.cashTendered) : null,
                 whishReference: p.whishReference,
                 receivedBy: p.receivedBy,
+                currency: p.currency as 'USD' | 'LBP',
+                lbpAmount: p.lbpAmount === null ? null : Number(p.lbpAmount),
+                exchangeRate: p.exchangeRate,
+                changeLbpCents: centsOf(p.changeLbpUsd),
+                changeLbp: p.changeLbp === null ? null : Number(p.changeLbp),
             })),
         }));
     }
@@ -61,7 +68,7 @@ export class SaleRepository implements ISaleRepository {
     private loadRows(where: object, take?: number, skip?: number) {
         return this.prisma.sale.findMany({
             where,
-            include: { lines: { orderBy: { lineNo: 'asc' } }, payments: { orderBy: { createdAt: 'asc' } } },
+            include: { lines: { orderBy: { lineNo: 'asc' } }, payments: { orderBy: [{ createdAt: 'asc' }, { currency: 'desc' }] } },
             orderBy: [{ soldAt: 'desc' }, { reference: 'desc' }],
             take,
             skip,

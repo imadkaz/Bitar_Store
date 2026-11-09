@@ -75,6 +75,11 @@ export function parseSaleRequest(body: unknown): SaleRequest {
         const method: PaymentMethod = raw.method;
         const payment: PaymentInput = { method, amountCents: parseMoneyValue(raw.amount, 'Payment amount') };
         if (raw.tendered !== undefined && raw.tendered !== null) payment.tenderedCents = parseMoneyValue(raw.tendered, 'Cash given');
+        if (raw.currency !== undefined && raw.currency !== null) {
+            if (raw.currency !== 'USD' && raw.currency !== 'LBP') throw new ValidationError(`Payment ${index + 1}: currency must be USD or LBP`);
+            payment.currency = raw.currency;
+        }
+        if (raw.changeLbp !== undefined && raw.changeLbp !== null) payment.changeLbpCents = parseMoneyValue(raw.changeLbp, 'Change given in pounds');
         if (raw.reference !== undefined && raw.reference !== null) {
             if (typeof raw.reference !== 'string') throw new ValidationError('The Whish reference must be text');
             payment.whishReference = raw.reference;
@@ -101,7 +106,7 @@ export function hashSaleRequest(request: SaleRequest): string {
         p: request.socialPlatform,
         n: request.note,
         l: request.lines.map((l) => [l.skuId, l.quantity, l.discount ? [l.discount.type, 'percentHundredths' in l.discount ? l.discount.percentHundredths : l.discount.unitPriceCents, l.discount.reason] : null]),
-        m: request.payments.map((p) => [p.method, p.amountCents, p.tenderedCents ?? null, p.whishReference?.trim() ?? null]),
+        m: request.payments.map((p) => [p.method, p.amountCents, p.tenderedCents ?? null, p.whishReference?.trim() ?? null, ...(p.currency === 'LBP' || p.changeLbpCents ? [p.currency ?? 'USD', p.changeLbpCents ?? 0] : [])]),
     };
     return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
