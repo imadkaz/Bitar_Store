@@ -134,7 +134,7 @@ describe.skipIf(!disposable)('goods receipts from a supplier (real database)', (
         it('every bad body is a 400, and the Idempotency-Key is required', async () => {
             const sku = await newSku();
             const ok = { lines: [{ skuId: sku.id, quantity: 1, unitCost: '1.00' }] };
-            for (const patch of [{ supplierName: undefined }, { supplierName: 'X' }, { supplierInvoiceNumber: '' }, { supplierInvoiceNumber: undefined }, { invoiceDate: '2999-01-01' }, { invoiceDate: '2026-02-30' }, { currency: 'dollars' },
+            for (const patch of [{ supplierName: undefined }, { supplierName: 'X' }, { supplierInvoiceNumber: 'x'.repeat(51) }, { invoiceDate: '2999-01-01' }, { invoiceDate: '2026-02-30' }, { currency: 'dollars' },
                 { lines: [] }, { lines: undefined }, { lines: [{ skuId: sku.id, quantity: 0, unitCost: '1.00' }] }, { lines: [{ skuId: sku.id, quantity: 1 }] }, { lines: [{ skuId: sku.id, quantity: 1, unitCost: '-2' }] },
                 { lines: [{ skuId: sku.id, quantity: 1, unitCost: '1.00' }, { skuId: sku.id, quantity: 2, unitCost: '1.00' }] }]) {
                 expect((await receive(adminId, { ...ok, ...patch })).status, JSON.stringify(patch).slice(0, 70)).toBe(400);

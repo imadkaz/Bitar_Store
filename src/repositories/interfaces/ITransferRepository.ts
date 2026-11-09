@@ -18,6 +18,15 @@ export interface TransferLineView {
     receivedQty: number;
     resolvedQty: number;
     outstandingQty: number;      // still on the road
+    damagedQty: number;          // arrived damaged (counted in received, kept on hold at the destination)
+}
+
+export interface TransferReceiptView {
+    id: string;
+    at: Date;
+    by: { id: string; name: string | null };
+    note: string | null;
+    lines: { skuId: string; accepted: number; damaged: number }[];
 }
 
 export interface TransferView {
@@ -32,6 +41,8 @@ export interface TransferView {
     dispatchedBy: { id: string; name: string | null } | null;
     dispatchedAt: Date | null;
     lines: TransferLineView[];
+    receipts: TransferReceiptView[];                     // every count of what arrived, oldest first
+    supplyInvoice: { id: string; reference: string | null; status: string; total: string } | null;     // the live (not void) supply invoice of this transfer
 }
 
 export interface TransferListFilter {

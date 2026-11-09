@@ -55,24 +55,25 @@ export class InvoiceWriter implements IInvoiceWriter {
                     : `This transfer already has the invoice ${live.reference} (id ${live.id}). Void it first to make another`);
             }
 
-            const lines = await tx.$queryRaw<{ sku_id: string; sku_code: string; style_name: string; size: string; color: string; quantity: number; price: string; currency: string }[]>`
-                SELECT tl.sku_id, k.sku_code, st.name AS style_name, k.size, k.color, tl.dispatched_qty AS quantity, k.standard_price::text AS price, k.currency
+            const lines = await tx.$queryRaw<{ sku_id: string; sku_code: string; style_name: string; size: string; color: string; quantity: number; price: string | null; currency: string }[]>`
+                SELECT tl.sku_id, k.sku_code, st.name AS style_name, k.size, k.color, tl.dispatched_qty AS quantity, sc.avg_unit_cost::text AS price, k.currency
                 FROM transfer_lines tl JOIN skus k ON k.id = tl.sku_id JOIN styles st ON st.id = k.style_id
+                LEFT JOIN stock_costs sc ON sc.sku_id = tl.sku_id AND sc.branch_id = ${transfer.source_branch_id}::uuid
                 WHERE tl.transfer_id = ${transferId}::uuid AND tl.dispatched_qty > 0 ORDER BY k.sku_code`;
             if (lines.length === 0) throw new ConflictError('Nothing was sent in this transfer');
             const currency = lines[0].currency;
             if (lines.some((l) => l.currency !== currency)) throw new ConflictError('The products of this transfer are priced in different currencies');
 
-            const prepared = lines.map((l, i) => ({ lineNo: i + 1, skuId: l.sku_id, skuCode: l.sku_code, description: `${l.style_name}, ${l.size}, ${l.color}`, quantity: l.quantity, unitCents: cents(l.price) }));
+            const prepared = lines.map((l, i) => ({ lineNo: i + 1, skuId: l.sku_id, skuCode: l.sku_code, description: `${l.style_name}, ${l.size}, ${l.color}`, quantity: l.quantity, unitCents: l.price === null ? 0 : cents(l.price), priceSource: l.price === null ? 'missing' as const : 'cost' as const }));
             const subtotal = prepared.reduce((sum, l) => sum + lineTotalCents(l.quantity, l.unitCents), 0);
             const created = await tx.invoice.create({
                 data: {
                     kind: 'b2b', status: 'draft', transferId, issuerBranchId: transfer.source_branch_id, issuerName: transfer.source_name, recipientBranchId: transfer.destination_branch_id,
                     recipientName: transfer.destination_name, currency, subtotal: formatCents(subtotal), discountTotal: '0.00', total: formatCents(subtotal), note, issuedBy: actorId,
-                    lines: { create: prepared.map((l) => ({ lineNo: l.lineNo, skuId: l.skuId, skuCode: l.skuCode, description: l.description, quantity: l.quantity, unitPrice: formatCents(l.unitCents), discountAmount: '0.00', lineTotal: formatCents(lineTotalCents(l.quantity, l.unitCents)) })) },
+                    lines: { create: prepared.map((l) => ({ lineNo: l.lineNo, skuId: l.skuId, skuCode: l.skuCode, description: l.description, quantity: l.quantity, unitPrice: formatCents(l.unitCents), discountAmount: '0.00', lineTotal: formatCents(lineTotalCents(l.quantity, l.unitCents)), priceSource: l.priceSource })) },
                 },
             });
-            await writeAudit(tx, { actorId, action: 'invoice.create', entityType: 'invoice', entityId: created.id, branchId: transfer.source_branch_id, details: { kind: 'b2b', transfer: transfer.reference, lines: prepared.length, total: formatCents(subtotal) } });
+            await writeAudit(tx, { actorId, action: 'invoice.create', entityType: 'invoice', entityId: created.id, branchId: transfer.source_branch_id, details: { kind: 'b2b', transfer: transfer.reference, lines: prepared.length, total: formatCents(subtotal), missingCost: prepared.filter((l) => l.priceSource === 'missing').length } });
             return created.id;
         });
     }
@@ -97,7 +98,7 @@ export class InvoiceWriter implements IInvoiceWriter {
                 data: {
                     kind: 'b2c', status: 'draft', saleId, issuerBranchId: sale.branch_id, issuerName: sale.branch_name, recipientName: extra.customerName, recipientPhone: extra.customerPhone,
                     currency: sale.currency.trim(), subtotal: sale.subtotal, discountTotal: sale.discount, total: sale.total, note: extra.note, issuedBy: actorId,
-                    lines: { create: lines.map((l) => ({ lineNo: l.line_no, skuId: l.sku_id, skuCode: l.sku_code, description: `${l.style_name}, ${l.size}, ${l.color}`, quantity: l.quantity, unitPrice: l.unit_price, discountAmount: formatCents(cents(l.standard_total) - cents(l.line_total)), lineTotal: l.line_total })) },
+                    lines: { create: lines.map((l) => ({ lineNo: l.line_no, skuId: l.sku_id, skuCode: l.sku_code, description: `${l.style_name}, ${l.size}, ${l.color}`, quantity: l.quantity, unitPrice: l.unit_price, discountAmount: formatCents(cents(l.standard_total) - cents(l.line_total)), lineTotal: l.line_total, priceSource: 'sale' })) },
                 },
             });
             // the invoice of a sale is final at once: numbered and locked
@@ -121,7 +122,7 @@ export class InvoiceWriter implements IInvoiceWriter {
                 if (!line) throw new ValidationError('A product in lines is not on this invoice');
                 const after = formatCents(edit.unitPriceCents);
                 if (after !== line.unit_price) changes.push({ sku: line.sku_code, before: line.unit_price, after });
-                await tx.$executeRaw`UPDATE invoice_lines SET unit_price = ${after}::numeric, line_total = (${line.quantity} * ${after}::numeric)::numeric(14,2) WHERE id = ${line.id}::uuid`;
+                await tx.$executeRaw`UPDATE invoice_lines SET unit_price = ${after}::numeric, line_total = (${line.quantity} * ${after}::numeric)::numeric(14,2), price_source = 'manual' WHERE id = ${line.id}::uuid`;
             }
             const totals = await tx.$queryRaw<{ total: string }[]>`SELECT COALESCE(SUM(line_total), 0)::text AS total FROM invoice_lines WHERE invoice_id = ${invoiceId}::uuid`;
             const noteChanged = request.note !== undefined;
@@ -136,6 +137,8 @@ export class InvoiceWriter implements IInvoiceWriter {
         return this.run(async (tx) => {
             const invoice = await this.lock(tx, invoiceId, authorize);
             if (invoice.status !== 'draft') throw new ConflictError(`This invoice is already ${invoice.status}`);
+            const unpriced = await tx.$queryRaw<{ sku_code: string }[]>`SELECT sku_code FROM invoice_lines WHERE invoice_id = ${invoiceId}::uuid AND price_source = 'missing' ORDER BY line_no`;
+            if (unpriced.length > 0) throw new ConflictError(`No cost is known for ${unpriced.map((l) => l.sku_code).join(', ')}: set the price of ${unpriced.length === 1 ? 'this line' : 'these lines'} before finalizing`);
             const rows = await tx.$queryRaw<{ reference: string }[]>`
                 UPDATE invoices SET status = 'final', reference = 'B2B-' || lpad(nextval('invoice_b2b_ref_seq')::text, 8, '0'), finalized_at = now(), finalized_by = ${actorId}::uuid
                 WHERE id = ${invoiceId}::uuid RETURNING reference`;

@@ -75,12 +75,14 @@ export class GetInvoicePdfUsecase {
 export class ListInvoicesUsecase {
     constructor(private readonly invoices: IInvoiceRepository) {}
 
-    async execute(input: { kind?: unknown; status?: unknown; branchId?: unknown; search?: unknown; from?: unknown; to?: unknown; limit?: unknown; offset?: unknown }, auth: AuthContext): Promise<{ items: InvoiceSummary[]; total: number }> {
+    async execute(input: { kind?: unknown; status?: unknown; branchId?: unknown; transferId?: unknown; saleId?: unknown; search?: unknown; from?: unknown; to?: unknown; limit?: unknown; offset?: unknown }, auth: AuthContext): Promise<{ items: InvoiceSummary[]; total: number }> {
         if (input.kind !== undefined && input.kind !== 'b2b' && input.kind !== 'b2c') throw new ValidationError('kind must be b2b or b2c');
         const kind = input.kind as InvoiceKind | undefined;
         const status = parseSlug(input.status, 'status') as InvoiceStatus | undefined;
         if (status !== undefined && !['draft', 'final', 'void'].includes(status)) throw new ValidationError('status must be draft, final or void');
         const branchId = parseOptionalUuid(input.branchId, 'branchId');
+        const transferId = parseOptionalUuid(input.transferId, 'transferId');
+        const saleId = parseOptionalUuid(input.saleId, 'saleId');
         let search: string | undefined;
         if (input.search !== undefined) {
             if (typeof input.search !== 'string' || input.search.trim().length < 1 || input.search.trim().length > 100) throw new ValidationError('search must be 1 to 100 characters');
@@ -92,7 +94,7 @@ export class ListInvoicesUsecase {
         const { limit, offset } = resolvePaging(input.limit, input.offset);
         if (branchId !== undefined && !auth.canAccessBranch(branchId)) throw new ForbiddenError('You cannot see the invoices of this place');
         const isAdmin = auth.user.getRole() === UserRole.ADMIN;                                // the admin sees the invoices of every place
-        return this.invoices.list({ branchIds: isAdmin ? null : auth.getBranchIds(), kind, status, branchId, search, from, to, limit, offset });
+        return this.invoices.list({ branchIds: isAdmin ? null : auth.getBranchIds(), kind, status, branchId, transferId, saleId, search, from, to, limit, offset });
     }
 }
 

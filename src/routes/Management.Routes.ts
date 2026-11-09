@@ -58,3 +58,14 @@ export const InvoiceRoutes = (controller: InvoiceController, authenticate: Reque
         .get('/:id', authenticate, asyncHandler(controller.getInvoice))
         .patch('/:id', authenticate, asyncHandler(controller.updateInvoice))
         .delete('/:id', authenticate, asyncHandler(controller.deleteInvoice));
+
+
+import { SupplierController } from '../controllers/ManagementControllers';
+
+// mounted at /suppliers: the use cases check who may
+export const SupplierRoutes = (controller: SupplierController, authenticate: RequestHandler): Router =>
+    Router()
+        .get('/', authenticate, asyncHandler(controller.listSuppliers))
+        .post('/', authenticate, asyncHandler(controller.createSupplier))
+        .get('/:id', authenticate, asyncHandler(controller.getSupplier))
+        .patch('/:id', authenticate, asyncHandler(controller.updateSupplier));

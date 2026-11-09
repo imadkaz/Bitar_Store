@@ -29,8 +29,8 @@ describe('parseGoodsReceipt', () => {
 
     it('refuses what is wrong, clearly', () => {
         const bad: Record<string, unknown>[] = [
-            { supplierName: undefined }, { supplierName: 'X' }, { supplierName: '   ' }, { supplierName: 'x'.repeat(101) }, { supplierName: 5 },
-            { supplierInvoiceNumber: undefined }, { supplierInvoiceNumber: '' }, { supplierInvoiceNumber: 'x'.repeat(51) }, { supplierInvoiceNumber: 'A\u0000B' },
+            { supplierName: undefined }, { supplierName: 'X' }, { supplierName: '   ' }, { supplierName: 'x'.repeat(101) }, { supplierName: 5 }, { supplierName: undefined, supplierId: 'abc' }, { supplierName: undefined, supplierId: 5 },
+            { supplierInvoiceNumber: 'x'.repeat(51) }, { supplierInvoiceNumber: 'A\u0000B' }, { supplierInvoiceNumber: true },
             { invoiceDate: '2026-11-04' }, { invoiceDate: '2026-02-30' }, { invoiceDate: '03/11/2026' }, { invoiceDate: 20261101 },
             { currency: 'dollars' }, { note: 'x'.repeat(201) }, { note: 5 },
             { lines: undefined }, { lines: [] }, { lines: 'x' }, { lines: Array.from({ length: 201 }, () => ({ skuId: randomUUID(), quantity: 1, unitCost: '1.00' })) },
@@ -42,5 +42,12 @@ describe('parseGoodsReceipt', () => {
         ];
         for (const patch of bad) expect(() => parseGoodsReceipt(body(patch), NOW), JSON.stringify(patch).slice(0, 80)).toThrow(ValidationError);
         for (const input of [undefined, null, 'x', [], 5]) expect(() => parseGoodsReceipt(input, NOW), String(input)).toThrow(ValidationError);
+    });
+
+    it('the supplier is chosen by id (or named), and the supplier\'s invoice number is optional', () => {
+        const supplierId = randomUUID();
+        expect(parseGoodsReceipt(body({ supplierName: undefined, supplierId }), NOW)).toMatchObject({ supplierId, supplierName: null });
+        expect(parseGoodsReceipt(body({ supplierId }), NOW)).toMatchObject({ supplierId, supplierName: 'Textile Co' });
+        for (const empty of [undefined, null, '', '   ']) expect(parseGoodsReceipt(body({ supplierInvoiceNumber: empty }), NOW).supplierInvoiceNumber, String(empty)).toBeNull();
     });
 });

@@ -67,6 +67,17 @@ class PrismaTransferTransaction implements TransferTransaction {
         return quantities;
     }
 
+    async recordReceipt(input: { transferId: string; actorId: string; note: string | null; lines: { skuId: string; accepted: number; damaged: number }[]; idempotencyKeyId: string }): Promise<void> {
+        const rows = await this.tx.$queryRaw<{ id: string }[]>`
+            INSERT INTO transfer_receipts (transfer_id, received_by, note, idempotency_key_id)
+            VALUES (${input.transferId}::uuid, ${input.actorId}::uuid, ${input.note}::text, ${input.idempotencyKeyId}::uuid) RETURNING id`;
+        for (const line of input.lines) {
+            await this.tx.$executeRaw`
+                INSERT INTO transfer_receipt_lines (receipt_id, sku_id, accepted_qty, damaged_qty)
+                VALUES (${rows[0].id}::uuid, ${line.skuId}::uuid, ${line.accepted}::int, ${line.damaged}::int)`;
+        }
+    }
+
     async applyMoves(transferId: string, moves: StockMove[], actorId: string, idempotencyKeyId: string): Promise<void> {
         // always in the same order (place, sku, bucket): two transfers touching the same balances never wait for each other in a circle
         const ordered = [...moves].sort((a, b) => a.branchId.localeCompare(b.branchId) || a.skuId.localeCompare(b.skuId) || a.bucket.localeCompare(b.bucket));

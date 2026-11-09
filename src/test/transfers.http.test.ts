@@ -317,3 +317,85 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
         });
     });
 });
+
+// ---- added: what the destination counted is kept on the server (who, when, the note, accepted and damaged), not in a browser tab
+describe.skipIf(!disposable)('the receiving record of a transfer (real database)', () => {
+    let a = '', wh = '', br = '', other = '', mgr = '', emp = '', skuA = '', skuB = '';
+    const k = () => `rc-${randomUUID()}`;
+    const makeUser = async (tag: string, role: UserRole) => (await createUserWithPassword(new UserRepository(prisma), { email: `${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@bitar.test`, password: 'Password#123', fullName: `Test ${tag}`, role }, a)).getId();
+    const tk = (id: string) => ({ Authorization: `Bearer ${tokens.sign(id)}` });
+
+    beforeAll(async () => {
+        await waitForDatabase(prisma);
+        a = (await createUserWithPassword(new UserRepository(prisma), { email: `rcadmin-${Date.now()}@bitar.test`, password: 'Password#123', fullName: 'Test rcadmin', role: UserRole.ADMIN }, null)).getId();
+        const branches = await request(app).get('/branches').set(tk(a));
+        wh = branches.body.find((b: { kind: string }) => b.kind === 'warehouse')?.id;
+        if (!wh) wh = (await request(app).post('/branches').set(tk(a)).send({ code: `RCW-${Date.now()}`, name: 'Main Warehouse (receipt test)', kind: 'warehouse' })).body.id;
+        await request(app).patch(`/branches/${wh}`).set(tk(a)).send({ isActive: true });
+        br = (await request(app).post('/branches').set(tk(a)).send({ code: `RCB-${Date.now()}`, name: 'Receipt Branch' })).body.id;
+        other = (await request(app).post('/branches').set(tk(a)).send({ code: `RCO-${Date.now()}`, name: 'Receipt Other' })).body.id;
+        mgr = await makeUser('rcmgr', UserRole.MANAGER);
+        emp = await makeUser('rcemp', UserRole.EMPLOYEE);
+        await request(app).put(`/users/${mgr}/branches/${br}`).set(tk(a));
+        await request(app).put(`/users/${emp}/branches/${br}`).set(tk(a));
+        const styleId = (await request(app).post('/styles').set(tk(a)).send({ code: `RCS${Date.now()}`, name: 'Receipt Dress' })).body.id;
+        skuA = (await request(app).post('/skus').set(tk(a)).send({ styleId, skuCode: `RC${Date.now()}-A`, size: 'S', color: 'Red', standardPrice: '10.00' })).body.id;
+        skuB = (await request(app).post('/skus').set(tk(a)).send({ styleId, skuCode: `RC${Date.now()}-B`, size: 'M', color: 'Red', standardPrice: '10.00' })).body.id;
+        await request(app).post('/stock/opening').set(tk(a)).set('Idempotency-Key', k()).send({ branchId: wh, lines: [{ skuId: skuA, quantity: 100 }, { skuId: skuB, quantity: 100 }] });
+    }, 120_000);
+
+    const sent = async (lines: { skuId: string; quantity: number }[]) => {
+        const t = (await request(app).post('/transfers').set(tk(a)).set('Idempotency-Key', k()).send({ sourceBranchId: wh, destinationBranchId: br, lines })).body;
+        expect((await request(app).post(`/transfers/${t.id}/dispatch`).set(tk(a)).set('Idempotency-Key', k())).status).toBe(200);
+        return t.id as string;
+    };
+
+    it('each count is kept with who, when, the note and what was accepted and damaged; the line and the totals add the damaged up', async () => {
+        const id = await sent([{ skuId: skuA, quantity: 10 }, { skuId: skuB, quantity: 6 }]);
+        expect((await request(app).get(`/transfers/${id}`).set(tk(mgr))).body.receipts).toEqual([]);
+        const first = await request(app).post(`/transfers/${id}/receive`).set(tk(mgr)).set('Idempotency-Key', k()).send({ lines: [{ skuId: skuA, accepted: 5, damaged: 1 }], note: '  2 cartons wet, seams checked  ' });
+        expect(first.status, JSON.stringify(first.body)).toBe(200);
+        const second = await request(app).post(`/transfers/${id}/receive`).set(tk(emp)).set('Idempotency-Key', k()).send({ lines: [{ skuId: skuA, accepted: 3 }, { skuId: skuB, accepted: 4, damaged: 2 }] });
+        expect(second.status, JSON.stringify(second.body)).toBe(200);
+        const detail = (await request(app).get(`/transfers/${id}`).set(tk(mgr))).body;
+        expect(detail.receipts).toHaveLength(2);
+        expect(detail.receipts[0]).toMatchObject({ note: '2 cartons wet, seams checked', by: { id: mgr, name: 'Test rcmgr' }, lines: [{ skuId: skuA, accepted: 5, damaged: 1 }] });
+        expect(detail.receipts[1]).toMatchObject({ note: null, by: { id: emp } });
+        expect(detail.receipts[1].lines.map((l: { skuId: string; accepted: number; damaged: number }) => [l.skuId, l.accepted, l.damaged]).sort()).toEqual([[skuA, 3, 0], [skuB, 4, 2]].sort());
+        expect(new Date(detail.receipts[0].at).getTime()).toBeLessThanOrEqual(new Date(detail.receipts[1].at).getTime());
+        const line = (sku: string) => detail.lines.find((l: { sku: { id: string } }) => l.sku.id === sku);
+        expect(line(skuA)).toMatchObject({ requested: 10, dispatched: 10, received: 9, accepted: 8, damaged: 1, onTheRoad: 1 });
+        expect(line(skuB)).toMatchObject({ received: 6, accepted: 4, damaged: 2, onTheRoad: 0 });
+        expect(detail.totals).toMatchObject({ dispatched: 16, received: 15, accepted: 12, damaged: 3, onTheRoad: 1 });
+        expect(first.body.receipts).toHaveLength(1);                                                       // the answer of the step itself already shows it
+    });
+
+    it('the note is optional, 1 to 500 characters of text; a retry with the same key keeps one record; the record can never be edited or deleted', async () => {
+        const id = await sent([{ skuId: skuA, quantity: 4 }]);
+        for (const note of [5, true, 'x'.repeat(501), 'a\u0000b']) {
+            expect((await request(app).post(`/transfers/${id}/receive`).set(tk(a)).set('Idempotency-Key', k()).send({ lines: [{ skuId: skuA, accepted: 1 }], note })).status, JSON.stringify(note).slice(0, 20)).toBe(400);
+        }
+        expect((await request(app).get(`/transfers/${id}`).set(tk(a))).body.receipts).toEqual([]);              // a refused count leaves nothing behind
+        const key = k();
+        const body = { lines: [{ skuId: skuA, accepted: 2 }], note: 'Counted twice' };
+        const first = await request(app).post(`/transfers/${id}/receive`).set(tk(a)).set('Idempotency-Key', key).send(body);
+        const again = await request(app).post(`/transfers/${id}/receive`).set(tk(a)).set('Idempotency-Key', key).send(body);
+        expect([first.status, again.status, again.headers['idempotent-replay']]).toEqual([200, 200, 'true']);
+        expect((await request(app).get(`/transfers/${id}`).set(tk(a))).body.receipts).toHaveLength(1);
+        expect((await request(app).post(`/transfers/${id}/receive`).set(tk(a)).set('Idempotency-Key', key).send({ ...body, note: 'Another note' })).status).toBe(409);       // same key, another request
+        await expect(prisma.$executeRaw`UPDATE transfer_receipts SET note = 'edited' WHERE transfer_id = ${id}::uuid`).rejects.toThrow();
+        await expect(prisma.$executeRaw`DELETE FROM transfer_receipt_lines WHERE receipt_id IN (SELECT id FROM transfer_receipts WHERE transfer_id = ${id}::uuid)`).rejects.toThrow();
+    });
+
+    it('a count that is refused (more than is on the way, someone else\'s transfer) leaves no receipt; only the receiving side may count', async () => {
+        const id = await sent([{ skuId: skuA, quantity: 2 }]);
+        const tooMany = await request(app).post(`/transfers/${id}/receive`).set(tk(a)).set('Idempotency-Key', k()).send({ lines: [{ skuId: skuA, accepted: 3 }], note: 'Too many' });
+        expect(tooMany.status).toBe(409);
+        const stranger = await makeUser('rcstranger', UserRole.MANAGER);
+        await request(app).put(`/users/${stranger}/branches/${other}`).set(tk(a));
+        expect((await request(app).post(`/transfers/${id}/receive`).set(tk(stranger)).set('Idempotency-Key', k()).send({ lines: [{ skuId: skuA, accepted: 1 }] })).status).toBeGreaterThanOrEqual(403);
+        expect((await request(app).get(`/transfers/${id}`).set(tk(a))).body.receipts).toEqual([]);
+        const listed = (await request(app).get(`/transfers?branchId=${br}`).set(tk(a))).body as { id: string; receipts: unknown[] }[];
+        expect(listed.find((t) => t.id === id)?.receipts).toEqual([]);
+    });
+});
