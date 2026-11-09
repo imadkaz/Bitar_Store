@@ -27,7 +27,8 @@ export interface PermissionOverride {
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
-    [UserRole.EMPLOYEE]: ['sales.create', 'transfers.receive'],
+    // confirming an arrival is a manager's act (BL-03): an employee receives only when it is GRANTED (the employees that existed keep it: migration 016)
+    [UserRole.EMPLOYEE]: ['sales.create'],
     [UserRole.MANAGER]: [
         'sales.create', 'transfers.receive', 'discounts.apply', 'catalog.create',
         'transfers.dispatch', 'returns.create', 'adjustments.create', 'reports.financial',

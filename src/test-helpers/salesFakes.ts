@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AuthContext } from '../models/AuthContext';
-import { resolvePermissions } from '../models/Permission';
+import { Permission, resolvePermissions } from '../models/Permission';
 import { Sale } from '../models/Sale.model';
 import { UserRole } from '../models/User.model';
 import { ISaleRepository, SaleListFilter, SaleView } from '../repositories/interfaces/ISaleRepository';
@@ -192,7 +192,7 @@ export class FakeStockRepository implements IStockRepository {
     }
 }
 
-export function makeAuth(role: UserRole, branchIds: string[] = [], overrides: { permission: never; effect: 'allow' | 'deny' }[] = []): AuthContext {
+export function makeAuth(role: UserRole, branchIds: string[] = [], overrides: { permission: Permission; effect: 'allow' | 'deny' }[] = []): AuthContext {
     const user = makeUser({ role });
     return new AuthContext(user, resolvePermissions(role, overrides), new Set(branchIds));
 }

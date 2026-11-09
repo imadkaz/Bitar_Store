@@ -240,7 +240,9 @@ export function toTransferResponse(t: TransferView) {
         requestedAt: t.requestedAt,
         dispatchedBy: t.dispatchedBy,
         dispatchedAt: t.dispatchedAt,
+        expectedAt: t.expectedAt,
         supplyInvoice: t.supplyInvoice,
+        returnInvoice: t.returnInvoice,
         lines: t.lines.map((l) => ({
             sku: { id: l.skuId, code: l.skuCode, styleName: l.styleName, size: l.size, color: l.color },
             requested: l.requestedQty, dispatched: l.dispatchedQty, received: l.receivedQty, damaged: l.damagedQty, accepted: l.receivedQty - l.damagedQty, lost: l.resolvedQty, onTheRoad: l.outstandingQty,

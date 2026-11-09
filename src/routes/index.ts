@@ -251,7 +251,7 @@ const invoiceController = new InvoiceController(
 // ---- transfers
 const transferController = new TransferController(
     new CreateTransferUsecase(transferUnitOfWork, transferRepository),
-    new DispatchTransferUsecase(transferUnitOfWork, transferRepository, stockAlertRepository, undefined, { raise: async (transferId, actorId) => { await invoiceWriter.createFromTransfer(transferId, actorId, null, () => undefined); } }),
+    new DispatchTransferUsecase(transferUnitOfWork, transferRepository, stockAlertRepository, undefined, { raise: async (transferId, actorId) => { await invoiceWriter.raiseDraftsForTransfer(transferId, actorId); } }),
     new ReceiveTransferUsecase(transferUnitOfWork, transferRepository),
     new ResolveTransferUsecase(transferUnitOfWork, transferRepository),
     new CancelTransferUsecase(transferUnitOfWork, transferRepository),

@@ -1,3 +1,4 @@
+import { businessDateOf, isRealDate } from '../../utils/businessDate';
 import { createHash } from 'node:crypto';
 import { ValidationError } from '../../utils/exeptions/ValidationError';
 import { isUuid } from '../../utils/uuid';
@@ -49,6 +50,19 @@ export function parseDispatchBody(body: unknown): { skuId: string; quantity: num
         const line = asObject(raw, `Line ${i + 1}`);
         return { skuId: uuidOf(line.skuId, `Line ${i + 1}: skuId`), quantity: line.quantity as number };
     });
+}
+
+// optional: the day the goods are expected at the destination (YYYY-MM-DD, today or later, within 120 days)
+export function parseExpectedAt(body: unknown, now: Date): string | null {
+    if (body === undefined || body === null) return null;
+    const input = asObject(body);
+    if (input.expectedAt === undefined || input.expectedAt === null) return null;
+    const today = businessDateOf(now);
+    if (typeof input.expectedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.expectedAt) || !isRealDate(input.expectedAt)) throw new ValidationError('expectedAt must be a real date like 2026-11-12');
+    if (input.expectedAt < today) throw new ValidationError('expectedAt cannot be in the past');
+    const limit = businessDateOf(new Date(now.getTime() + 120 * 86_400_000));
+    if (input.expectedAt > limit) throw new ValidationError('expectedAt is too far away: at most 120 days');
+    return input.expectedAt;
 }
 
 export function parseReceiveBody(body: unknown): { skuId: string; accepted: number; damaged?: number }[] {

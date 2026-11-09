@@ -27,7 +27,7 @@ describe('transfers between the warehouse and the branches', () => {
 
     const admin = () => makeAuth(UserRole.ADMIN);
     const hamraManager = () => makeAuth(UserRole.MANAGER, [hamra.id]);
-    const hamraStaff = () => makeAuth(UserRole.EMPLOYEE, [hamra.id]);
+    const hamraStaff = () => makeAuth(UserRole.EMPLOYEE, [hamra.id], [{ permission: 'transfers.receive', effect: 'allow' }]);     // an employee receives only when it is granted (BL-03)
     const tripoliManager = () => makeAuth(UserRole.MANAGER, [tripoli.id]);
     const key = () => `tr-${randomUUID()}`;
     const draftBody = (patch: Record<string, unknown> = {}) => ({ sourceBranchId: wh.id, destinationBranchId: hamra.id, lines: [{ skuId: dress.skuId, quantity: 10 }, { skuId: cap.skuId, quantity: 4 }], ...patch });

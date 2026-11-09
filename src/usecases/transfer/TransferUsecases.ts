@@ -13,7 +13,7 @@ import { isUuid } from '../../utils/uuid';
 import { resolvePaging } from '../styles/paging';
 import { parseOptionalUuid } from '../insight/scope';
 import { parseIdempotencyKey } from '../sales/saleRequest';
-import { hashOf, parseCreateTransfer, parseDispatchBody, parseReceiveBody, parseReceiveNote, parseResolveBody } from './transferRequest';
+import { hashOf, parseCreateTransfer, parseDispatchBody, parseExpectedAt, parseReceiveBody, parseReceiveNote, parseResolveBody } from './transferRequest';
 
 export interface TransferActionResult {
     transfer: TransferView;
@@ -105,7 +105,8 @@ export class DispatchTransferUsecase extends TransferStepUsecase {
         const id = transferId(rawId);
         const key = parseIdempotencyKey(idempotencyKeyHeader);
         const only = parseDispatchBody(body);
-        const hash = hashOf('transfer.dispatch', id, only ?? null);
+        const expectedAt = parseExpectedAt(body, this.now());
+        const hash = hashOf('transfer.dispatch', id, expectedAt === null ? (only ?? null) : { only: only ?? null, expectedAt });
         let shortages: StockShortage[] = [];
         let sourceId = '';
 
@@ -137,6 +138,7 @@ export class DispatchTransferUsecase extends TransferStepUsecase {
 
                 await tx.applyMoves(id, moves, actorId, claim.keyId);
                 await tx.saveTransfer(transfer, actorId, { by: actorId, at: this.now() });
+                if (expectedAt !== null) await tx.setExpectedAt(id, expectedAt);
                 await tx.audit({ actorId, action: 'transfer.dispatch', entityType: 'transfer', entityId: id, branchId: transfer.sourceBranchId, details: { sent: transfer.getLines().reduce((s, l) => s + l.dispatchedQty, 0) } });
                 await tx.completeIdempotencyKey(claim.keyId, 'transfer', id);
             });

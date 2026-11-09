@@ -5,7 +5,7 @@ import { parseMoneyToCents } from './Money';
 export const MAX_UNIT_PRICE_CENTS = 10_000_000;      // 100,000.00 per piece: keeps the total of the lines inside numeric(14,2)
 
 export type CreateInvoiceRequest =
-    | { kind: 'b2b'; transferId: string; note: string | null }
+    | { kind: 'b2b'; transferId: string; note: string | null; invoiceKind: 'b2b' | 'b2b_return' | null }     // invoiceKind: which of the transfer's invoices (null: the first one it needs)
     | { kind: 'b2c'; saleId: string; customerName: string | null; customerPhone: string | null; note: string | null };
 
 export interface PriceEdit { skuId: string; unitPriceCents: number }
@@ -42,7 +42,8 @@ export function parseCreateInvoice(body: unknown): CreateInvoiceRequest {
     if (hasTransfer) {
         if (typeof input.transferId !== 'string' || !isUuid(input.transferId)) throw new ValidationError('transferId must be the id of a transfer');
         for (const field of ['customerName', 'customerPhone']) if (input[field] !== undefined) throw new ValidationError('A supply invoice is addressed to the branch: customerName and customerPhone are for the invoice of a sale');
-        return { kind: 'b2b', transferId: input.transferId, note };
+        if (input.invoiceKind !== undefined && input.invoiceKind !== 'b2b' && input.invoiceKind !== 'b2b_return') throw new ValidationError('invoiceKind must be b2b or b2b_return');
+        return { kind: 'b2b', transferId: input.transferId, note, invoiceKind: (input.invoiceKind as 'b2b' | 'b2b_return' | undefined) ?? null };
     }
     if (typeof input.saleId !== 'string' || !isUuid(input.saleId)) throw new ValidationError('saleId must be the id of a sale');
     return { kind: 'b2c', saleId: input.saleId, customerName: optionalText(input.customerName, 'customerName', 2, 100), customerPhone: optionalPhone(input.customerPhone), note };

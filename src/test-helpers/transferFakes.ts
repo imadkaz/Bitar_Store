@@ -99,6 +99,7 @@ class FakeTransferTransaction implements TransferTransaction {
     async lockStock(branchId: string, skuIds: string[], bucket: StockBucket) { return new Map(skuIds.map((id) => [id, this.w.qty(branchId, id, bucket)])); }
 
     async recordReceipt() { /* the receipts are checked against the real database */ }
+    async setExpectedAt() { /* checked against the real database */ }
 
     async applyMoves(transferId: string, moves: StockMove[], actorId: string) {
         for (const move of moves) {
@@ -148,8 +149,10 @@ export class FakeTransferRepository implements ITransferRepository {
                 const sku = this.w.skus.get(l.skuId)!;
                 return { skuId: l.skuId, skuCode: sku.skuCode, styleName: sku.styleName, size: sku.size, color: sku.color, requestedQty: l.requestedQty, dispatchedQty: l.dispatchedQty, receivedQty: l.receivedQty, resolvedQty: l.resolvedQty, outstandingQty: l.dispatchedQty - l.receivedQty - l.resolvedQty, damagedQty: 0 };
             }),
+            expectedAt: null,
             receipts: [],
             supplyInvoice: null,
+            returnInvoice: null,
         };
     }
 

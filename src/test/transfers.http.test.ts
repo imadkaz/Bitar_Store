@@ -62,6 +62,8 @@ describe.skipIf(!disposable)('transfers (real database)', () => {
         hamraId = (await request(app).post('/branches').set(as(adminId)).send({ code: `TRH-${stamp}`, name: 'Hamra (transfer test)' })).body.id;
         tripoliId = (await request(app).post('/branches').set(as(adminId)).send({ code: `TRT-${stamp}`, name: 'Tripoli (transfer test)' })).body.id;
         for (const [user, branch] of [[hamraManagerId, hamraId], [hamraStaffId, hamraId], [tripoliManagerId, tripoliId]]) expect((await request(app).put(`/users/${user}/branches/${branch}`).set(as(adminId))).status).toBe(204);
+        // an employee receives only when it is GRANTED (BL-03: confirming an arrival is a manager's act)
+        expect((await request(app).put(`/users/${hamraStaffId}/permissions`).set(as(adminId)).send({ permissions: { 'transfers.receive': true } })).status).toBeLessThan(300);
         const all = await request(app).get('/branches').set(as(adminId));
         warehouseId = all.body.find((b: { kind: string }) => b.kind === 'warehouse')?.id;
         if (!warehouseId) warehouseId = (await request(app).post('/branches').set(as(adminId)).send({ code: `TRW-${stamp}`, name: 'Main Warehouse (test)', kind: 'warehouse' })).body.id;
@@ -338,6 +340,7 @@ describe.skipIf(!disposable)('the receiving record of a transfer (real database)
         emp = await makeUser('rcemp', UserRole.EMPLOYEE);
         await request(app).put(`/users/${mgr}/branches/${br}`).set(tk(a));
         await request(app).put(`/users/${emp}/branches/${br}`).set(tk(a));
+        await request(app).put(`/users/${emp}/permissions`).set(tk(a)).send({ permissions: { 'transfers.receive': true } });      // granted: the receiving employee
         const styleId = (await request(app).post('/styles').set(tk(a)).send({ code: `RCS${Date.now()}`, name: 'Receipt Dress' })).body.id;
         skuA = (await request(app).post('/skus').set(tk(a)).send({ styleId, skuCode: `RC${Date.now()}-A`, size: 'S', color: 'Red', standardPrice: '10.00' })).body.id;
         skuB = (await request(app).post('/skus').set(tk(a)).send({ styleId, skuCode: `RC${Date.now()}-B`, size: 'M', color: 'Red', standardPrice: '10.00' })).body.id;
@@ -397,5 +400,82 @@ describe.skipIf(!disposable)('the receiving record of a transfer (real database)
         expect((await request(app).get(`/transfers/${id}`).set(tk(a))).body.receipts).toEqual([]);
         const listed = (await request(app).get(`/transfers?branchId=${br}`).set(tk(a))).body as { id: string; receipts: unknown[] }[];
         expect(listed.find((t) => t.id === id)?.receipts).toEqual([]);
+    });
+});
+
+// ---- added: finishing the transfer (BL-03): the arrival is confirmed by a manager (an employee only when granted), and the expected arrival day
+describe.skipIf(!disposable)('who confirms an arrival, and when it is expected (real database)', () => {
+    let a = '', wh = '', br = '', mgr = '', plain = '', skuId = '';
+    const k = () => `ea-${randomUUID()}`;
+    const tk = (id: string) => ({ Authorization: `Bearer ${tokens.sign(id)}` });
+    const makeUser = async (tag: string, role: UserRole) => (await createUserWithPassword(new UserRepository(prisma), { email: `${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@bitar.test`, password: 'Password#123', fullName: `Test ${tag}`, role }, a)).getId();
+    const day = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Beirut' }).format(new Date(Date.now() + offset * 86_400_000));
+
+    beforeAll(async () => {
+        await waitForDatabase(prisma);
+        a = (await createUserWithPassword(new UserRepository(prisma), { email: `eaadmin-${Date.now()}@bitar.test`, password: 'Password#123', fullName: 'Test eaadmin', role: UserRole.ADMIN }, null)).getId();
+        const branches = await request(app).get('/branches').set(tk(a));
+        wh = branches.body.find((b: { kind: string }) => b.kind === 'warehouse')?.id;
+        if (!wh) wh = (await request(app).post('/branches').set(tk(a)).send({ code: `EW${String(Date.now()).slice(-8)}`, name: 'Main Warehouse (arrival test)', kind: 'warehouse' })).body.id;
+        await request(app).patch(`/branches/${wh}`).set(tk(a)).send({ isActive: true });
+        br = (await request(app).post('/branches').set(tk(a)).send({ code: `EB${String(Date.now()).slice(-8)}`, name: 'Arrival Branch' })).body.id;
+        mgr = await makeUser('eamgr', UserRole.MANAGER);
+        plain = await makeUser('eaplain', UserRole.EMPLOYEE);                     // a new employee: no grants
+        for (const u of [mgr, plain]) await request(app).put(`/users/${u}/branches/${br}`).set(tk(a));
+        const styleId = (await request(app).post('/styles').set(tk(a)).send({ code: `EA${String(Date.now()).slice(-8)}`, name: 'Arrival Dress' })).body.id;
+        skuId = (await request(app).post('/skus').set(tk(a)).send({ styleId, skuCode: `EA${String(Date.now()).slice(-8)}-1`, size: 'M', color: 'Red', standardPrice: '10.00' })).body.id;
+        await request(app).post('/stock/opening').set(tk(a)).set('Idempotency-Key', k()).send({ branchId: wh, lines: [{ skuId, quantity: 100 }] });
+    }, 120_000);
+
+    const sent = async (extra: object = {}) => {
+        const t = (await request(app).post('/transfers').set(tk(a)).set('Idempotency-Key', k()).send({ sourceBranchId: wh, destinationBranchId: br, lines: [{ skuId, quantity: 4 }] })).body;
+        const d = await request(app).post(`/transfers/${t.id}/dispatch`).set(tk(a)).set('Idempotency-Key', k()).send(extra);
+        return { id: t.id as string, res: d };
+    };
+
+    it('a new employee cannot confirm an arrival; a manager can; an employee who was GRANTED can', async () => {
+        const t = await sent();
+        const refused = await request(app).post(`/transfers/${t.id}/receive`).set(tk(plain)).set('Idempotency-Key', k()).send({ lines: [{ skuId, accepted: 1 }] });
+        expect(refused.status).toBe(403);
+        expect(refused.body.message).toContain('transfers.receive');
+        expect((await request(app).get(`/transfers/${t.id}`).set(tk(a))).body.receipts).toEqual([]);          // nothing was counted
+        expect((await request(app).post(`/transfers/${t.id}/receive`).set(tk(mgr)).set('Idempotency-Key', k()).send({ lines: [{ skuId, accepted: 2 }] })).status).toBe(200);
+        expect((await request(app).put(`/users/${plain}/permissions`).set(tk(a)).send({ permissions: { 'transfers.receive': true } })).status).toBeLessThan(300);
+        expect((await request(app).post(`/transfers/${t.id}/receive`).set(tk(plain)).set('Idempotency-Key', k()).send({ lines: [{ skuId, accepted: 2 }] })).status).toBe(200);
+        expect((await request(app).put(`/users/${plain}/permissions`).set(tk(a)).send({ permissions: { 'transfers.receive': false } })).status).toBeLessThan(300);       // taken away: it stops at once
+        const t2 = await sent();
+        expect((await request(app).post(`/transfers/${t2.id}/receive`).set(tk(plain)).set('Idempotency-Key', k()).send({ lines: [{ skuId, accepted: 1 }] })).status).toBe(403);
+    });
+
+    it('the day the goods are expected is given when they are sent: shown on the transfer, null when not given', async () => {
+        const none = await sent();
+        expect(none.res.status).toBe(200);
+        expect(none.res.body.expectedAt).toBeNull();
+        const tomorrow = day(1);
+        const withDay = await sent({ expectedAt: tomorrow });
+        expect(withDay.res.status, JSON.stringify(withDay.res.body)).toBe(200);
+        expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Beirut' }).format(new Date(withDay.res.body.expectedAt))).toBe(tomorrow);
+        const read = (await request(app).get(`/transfers/${withDay.id}`).set(tk(mgr))).body;
+        expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Beirut' }).format(new Date(read.expectedAt))).toBe(tomorrow);
+        const listed = (await request(app).get(`/transfers?branchId=${br}`).set(tk(a))).body as { id: string; expectedAt: string | null }[];
+        expect(listed.find((x) => x.id === withDay.id)?.expectedAt).toBeTruthy();
+        expect(listed.find((x) => x.id === none.id)?.expectedAt).toBeNull();
+        const today = await sent({ expectedAt: day(0) });
+        expect(today.res.status).toBe(200);                                           // today is allowed
+    });
+
+    it('a day in the past, too far away, or not a real date is a 400 and nothing is sent; the same key with another day is refused', async () => {
+        for (const expectedAt of [day(-1), day(121), '2026-02-30', '12/11/2026', 20261112, true]) {
+            const t = (await request(app).post('/transfers').set(tk(a)).set('Idempotency-Key', k()).send({ sourceBranchId: wh, destinationBranchId: br, lines: [{ skuId, quantity: 1 }] })).body;
+            const d = await request(app).post(`/transfers/${t.id}/dispatch`).set(tk(a)).set('Idempotency-Key', k()).send({ expectedAt });
+            expect(d.status, JSON.stringify(expectedAt)).toBe(400);
+            expect((await request(app).get(`/transfers/${t.id}`).set(tk(a))).body.status).toBe('draft');
+        }
+        const t = (await request(app).post('/transfers').set(tk(a)).set('Idempotency-Key', k()).send({ sourceBranchId: wh, destinationBranchId: br, lines: [{ skuId, quantity: 1 }] })).body;
+        const key = k();
+        expect((await request(app).post(`/transfers/${t.id}/dispatch`).set(tk(a)).set('Idempotency-Key', key).send({ expectedAt: day(2) })).status).toBe(200);
+        const replay = await request(app).post(`/transfers/${t.id}/dispatch`).set(tk(a)).set('Idempotency-Key', key).send({ expectedAt: day(2) });
+        expect([replay.status, replay.headers['idempotent-replay']]).toEqual([200, 'true']);
+        expect((await request(app).post(`/transfers/${t.id}/dispatch`).set(tk(a)).set('Idempotency-Key', key).send({ expectedAt: day(3) })).status).toBe(409);
     });
 });

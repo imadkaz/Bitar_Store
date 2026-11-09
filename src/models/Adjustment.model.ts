@@ -1,12 +1,14 @@
 import { ValidationError } from '../utils/exeptions/ValidationError';
 import { isUuid } from '../utils/uuid';
 
-export const ADJUSTMENT_REASONS = ['count_correction', 'damage', 'loss', 'found', 'data_entry_error', 'other'] as const;
+export const ADJUSTMENT_REASONS = ['count_correction', 'damage', 'loss', 'found', 'data_entry_error', 'other', 'hold', 'release', 'disposal'] as const;
 export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number];
 // The pieces on the road belong to a transfer (receive or confirm lost), never to an adjustment.
 export const ADJUSTABLE_BUCKETS = ['sellable', 'non_sellable'] as const;
 export type AdjustableBucket = (typeof ADJUSTABLE_BUCKETS)[number];
 export const MAX_ADJUSTMENT = 100_000;
+// putting on hold, releasing and disposing are a manager's acts (BL-02)
+export const MANAGER_ONLY_REASONS: readonly AdjustmentReason[] = ['hold', 'release', 'disposal'];
 
 export interface AdjustmentRequest {
     branchId: string;
@@ -42,12 +44,23 @@ export function parseAdjustment(body: unknown): AdjustmentRequest {
 
 // The stock changes of an adjustment.
 //   found: only adds · loss: only takes out · damage: only takes out, and damaged pieces that were for sale go ON HOLD (they are not gone)
+//   hold, release and disposal: see below
 export function planAdjustment(request: AdjustmentRequest): PlannedMove[] {
     const { reason, quantityDelta: delta, bucket } = request;
     if (reason === 'found' && delta < 0) throw new ValidationError('"found" adds pieces: quantityDelta must be positive');
     if ((reason === 'loss' || reason === 'damage') && delta > 0) throw new ValidationError(`"${reason}" takes pieces out: quantityDelta must be negative`);
     if (reason === 'damage' && bucket === 'sellable') {
         return [{ bucket: 'sellable', delta }, { bucket: 'non_sellable', delta: -delta }];
+    }
+    // hold: sellable pieces go on hold · release: held pieces go back on sale · disposal: held pieces are written off (they were looked at and are gone)
+    if (reason === 'hold' || reason === 'release' || reason === 'disposal') {
+        if (delta > 0) throw new ValidationError(`"${reason}" moves pieces out of where they are: quantityDelta must be negative`);
+        if (reason === 'hold') {
+            if (bucket !== 'sellable') throw new ValidationError('"hold" puts pieces that are for sale on hold: bucket must be "sellable"');
+            return [{ bucket: 'sellable', delta }, { bucket: 'non_sellable', delta: -delta }];
+        }
+        if (bucket !== 'non_sellable') throw new ValidationError(`"${reason}" works on the pieces on hold: bucket must be "non_sellable"`);
+        return reason === 'release' ? [{ bucket: 'non_sellable', delta }, { bucket: 'sellable', delta: -delta }] : [{ bucket: 'non_sellable', delta }];
     }
     return [{ bucket, delta }];
 }

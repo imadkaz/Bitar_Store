@@ -78,6 +78,10 @@ class PrismaTransferTransaction implements TransferTransaction {
         }
     }
 
+    async setExpectedAt(transferId: string, day: string): Promise<void> {
+        await this.tx.$executeRaw`UPDATE transfers SET expected_at = (${day}::date)::timestamp AT TIME ZONE 'Asia/Beirut' WHERE id = ${transferId}::uuid`;
+    }
+
     async applyMoves(transferId: string, moves: StockMove[], actorId: string, idempotencyKeyId: string): Promise<void> {
         // always in the same order (place, sku, bucket): two transfers touching the same balances never wait for each other in a circle
         const ordered = [...moves].sort((a, b) => a.branchId.localeCompare(b.branchId) || a.skuId.localeCompare(b.skuId) || a.bucket.localeCompare(b.bucket));

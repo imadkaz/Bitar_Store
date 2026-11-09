@@ -38,11 +38,12 @@ export class CreateInvoiceUsecase {
         let id: string;
         if (request.kind === 'b2b') {
             needDispatch(auth);
-            id = await this.writer.createFromTransfer(request.transferId, actorId, request.note, (source, destination) => {
-                if (auth.canAccessBranch(source)) return;
-                if (auth.canAccessBranch(destination)) throw new ForbiddenError('Only the sending place can make the supply invoice');
+            // the place that ISSUES the invoice makes it: the warehouse for a supply invoice, the sending branch for a return invoice
+            id = await this.writer.createFromTransfer(request.transferId, actorId, request.note, (source, destination, issuer) => {
+                if (auth.canAccessBranch(issuer)) return;
+                if (auth.canAccessBranch(source) || auth.canAccessBranch(destination)) throw new ForbiddenError('Only the place that issues the invoice can make it');
                 throw new NotFoundError('Transfer not found');
-            });
+            }, request.invoiceKind);
         } else {
             if (!auth.can('sales.create')) throw new ForbiddenError('Missing permission: sales.create');
             id = await this.writer.createFromSale(request.saleId, actorId, { customerName: request.customerName, customerPhone: request.customerPhone, note: request.note }, (branchId) => {
@@ -76,7 +77,7 @@ export class ListInvoicesUsecase {
     constructor(private readonly invoices: IInvoiceRepository) {}
 
     async execute(input: { kind?: unknown; status?: unknown; branchId?: unknown; transferId?: unknown; saleId?: unknown; search?: unknown; from?: unknown; to?: unknown; limit?: unknown; offset?: unknown }, auth: AuthContext): Promise<{ items: InvoiceSummary[]; total: number }> {
-        if (input.kind !== undefined && input.kind !== 'b2b' && input.kind !== 'b2c') throw new ValidationError('kind must be b2b or b2c');
+        if (input.kind !== undefined && input.kind !== 'b2b' && input.kind !== 'b2c' && input.kind !== 'b2b_return') throw new ValidationError('kind must be b2b, b2b_return or b2c');
         const kind = input.kind as InvoiceKind | undefined;
         const status = parseSlug(input.status, 'status') as InvoiceStatus | undefined;
         if (status !== undefined && !['draft', 'final', 'void'].includes(status)) throw new ValidationError('status must be draft, final or void');

@@ -22,6 +22,8 @@ export interface TransferTransaction {
     lockStock(branchId: string, skuIds: string[], bucket: StockBucket): Promise<Map<string, number>>;
     // changes the balances AND writes one ledger row for each move
     applyMoves(transferId: string, moves: StockMove[], actorId: string, idempotencyKeyId: string): Promise<void>;
+    // the day the goods are expected at the destination (the start of that day, Beirut time)
+    setExpectedAt(transferId: string, day: string): Promise<void>;
     // what the destination counted, kept as it was said: who, when, the note and the accepted and damaged pieces of each product
     recordReceipt(input: { transferId: string; actorId: string; note: string | null; lines: { skuId: string; accepted: number; damaged: number }[]; idempotencyKeyId: string }): Promise<void>;
     saveTransfer(transfer: Transfer, actorId: string, dispatched?: { by: string; at: Date }): Promise<void>;
