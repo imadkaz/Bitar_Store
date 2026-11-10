@@ -17,7 +17,8 @@
     "migrate": "tsx scripts/migrate.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:dev": "tsx scripts/seed-dev.ts",
-    "seed:demo": "tsx scripts/seed-demo.ts"
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "mcp": "tsx src/mcp/server.ts"
   },
   "keywords": [],
   "author": "imad",
@@ -41,6 +42,7 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "bcrypt": "^6.0.0",
