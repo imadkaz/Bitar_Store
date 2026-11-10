@@ -19,10 +19,8 @@ export class StockController {
         const { items, total } = await this.listStockUsecase.executePage(
             { branchId: textParam(req, 'branchId'), search: textParam(req, 'search'), styleId, activeOnly: boolParam(req, 'activeOnly'), limit: intParam(req, 'limit'), offset: intParam(req, 'offset') },
             getAuth(req),
-        );;
+        );
         res.setHeader('X-Total-Count', String(total));
-        res.status(200).json(items.map(toStockItemResponse));
-
         res.status(200).json(items.map(toStockItemResponse));
     };
 
