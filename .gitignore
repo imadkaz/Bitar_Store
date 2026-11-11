@@ -14,3 +14,5 @@ src/generated/
 logs/
 note.txt
 frontend/
+# the catalog sheets hold costs and prices: never commit them
+/data/
